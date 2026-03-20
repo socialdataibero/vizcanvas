@@ -136,18 +136,29 @@ PORT=3003 npm run start
 ## Scripts disponibles
 
 ```bash
+npm test
+npm run test:watch
+npm run test:coverage
 npm run dev
 npm run build
 npm run start
 npm run typecheck
 npm run lint
+npm run check:quick
 npm run check
 ```
 
+`npm run check:quick` ejecuta:
+
+- `npm test`
+- `npm run typecheck`
+
 `npm run check` ejecuta:
 
+- `npm run check:quick`
 - `npm run build`
-- `npm run typecheck`
+
+`npm run lint` queda disponible por separado. A dia de hoy no se incluye en `check` porque el repo ya tiene deuda previa de lint en codigo fuente.
 
 ## Estructura del proyecto
 
@@ -169,8 +180,16 @@ public/         assets estaticos
 El repo incluye `.github/workflows/ci.yml`, que en Ubuntu ejecuta:
 
 - `npm ci`
-- `npm run build`
-- `npm run typecheck`
+- `npm run check`
+
+## Testing y TDD
+
+- `npm test` corre la suite de Vitest.
+- `npm run test:watch` deja Vitest en modo interactivo.
+- `npm run test:coverage` genera un reporte de cobertura en texto y HTML.
+- `npm run check:quick` valida tests + typecheck para iterar mas rapido.
+- Usa red/green TDD para cambios de comportamiento en `src/engine`, `src/lib` y `src/app/api`.
+- Para una guia corta de colaboracion y niveles de validacion, revisa `CONTRIBUTING.md`.
 
 ## Subirlo a GitHub
 

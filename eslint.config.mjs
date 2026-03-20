@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored DuckDB worker bundles.
+    "public/duckdb/**",
   ]),
 ]);
 
