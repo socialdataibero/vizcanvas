@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
+import { LuSigma } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { GroupConfig, AggregationConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -10,6 +11,10 @@ import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 interface Props {
   node: DAGNode;
 }
+
+const EMPTY_COLUMNS: { name: string; type: string }[] = [];
+const EMPTY_GROUP_BY_COLUMNS: string[] = [];
+const EMPTY_AGGREGATIONS: AggregationConfig[] = [];
 
 function isNumericType(type: string): boolean {
   return /int|float|double|decimal|numeric|real|bigint|smallint|tinyint/i.test(type);
@@ -25,11 +30,14 @@ export default function GroupNodeBody({ node }: Props) {
   const executeDirty = useDagStore((s) => s.executeDirty);
   const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
   const upstreamNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
-  const availableColumns = upstreamNode?.result?.columns || [];
+  const availableColumns = upstreamNode?.result?.columns ?? EMPTY_COLUMNS;
   const previewResult = node.result ?? upstreamNode?.result ?? null;
-  const columnTypeByName = new Map(availableColumns.map((column) => [column.name, column.type]));
-  const groupByColumns = config.groupByColumns || [];
-  const aggregations = config.aggregations || [];
+  const columnTypeByName = useMemo(
+    () => new Map(availableColumns.map((column) => [column.name, column.type])),
+    [availableColumns]
+  );
+  const groupByColumns = config.groupByColumns ?? EMPTY_GROUP_BY_COLUMNS;
+  const aggregations = config.aggregations ?? EMPTY_AGGREGATIONS;
   const validAggregationCount = aggregations.filter((agg) => agg.function && agg.column).length;
   const hasPartialAggregation = aggregations.some(
     (agg) => Boolean(agg.function || agg.column) && !(agg.function && agg.column)
@@ -39,6 +47,17 @@ export default function GroupNodeBody({ node }: Props) {
   const currentVersion = config.configVersion ?? 0;
   const lastRunVersion = config.lastRunVersion ?? 0;
   const hasPendingChanges = hasOperation && lastRunVersion < currentVersion;
+
+  const updateGroupConfig = useCallback((patch: Partial<GroupConfig>) => {
+    updateNodeConfig(
+      node.id,
+      {
+        ...patch,
+        configVersion: currentVersion + 1,
+      } as Partial<GroupConfig>,
+      { autoExecute: false }
+    );
+  }, [currentVersion, node.id, updateNodeConfig]);
 
   useEffect(() => {
     if (aggregations.length === 0 || availableColumns.length === 0) return;
@@ -68,7 +87,7 @@ export default function GroupNodeBody({ node }: Props) {
     if (changed) {
       updateGroupConfig({ aggregations: normalizedAggregations });
     }
-  }, [aggregations, availableColumns.length]);
+  }, [aggregations, availableColumns.length, columnTypeByName, updateGroupConfig]);
 
   useEffect(() => {
     if (!hasOperation || currentVersion === lastRunVersion) return;
@@ -79,17 +98,6 @@ export default function GroupNodeBody({ node }: Props) {
     );
     void executeDirty(node.id);
   }, [currentVersion, executeDirty, hasOperation, lastRunVersion, node.id, updateNodeConfig]);
-
-  const updateGroupConfig = (patch: Partial<GroupConfig>) => {
-    updateNodeConfig(
-      node.id,
-      {
-        ...patch,
-        configVersion: currentVersion + 1,
-      } as Partial<GroupConfig>,
-      { autoExecute: false }
-    );
-  };
 
   const handleGroupByChange = (col: string, checked: boolean) => {
     const newCols = checked
@@ -128,7 +136,7 @@ export default function GroupNodeBody({ node }: Props) {
   if (availableColumns.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-4 text-xs text-gray-400">
-        <span className="text-2xl">📊</span>
+        <LuSigma className="h-7 w-7" />
         Connect an input first
       </div>
     );

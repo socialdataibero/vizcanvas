@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo } from "react";
+import { LuFilter } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { ControlsConfig, ControlDefinition } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -11,6 +12,9 @@ import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 interface Props {
   node: DAGNode;
 }
+
+const EMPTY_COLUMNS: { name: string; type: string }[] = [];
+const EMPTY_CONTROLS: ControlDefinition[] = [];
 
 function getFilterTypeLabel(type: ControlDefinition["type"]): string {
   switch (type) {
@@ -51,9 +55,9 @@ export default function ControlsNodeBody({ node }: Props) {
   const executeDirty = useDagStore((s) => s.executeDirty);
   const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
   const upstreamNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
-  const availableColumns = upstreamNode?.result?.columns || [];
+  const availableColumns = upstreamNode?.result?.columns ?? EMPTY_COLUMNS;
   const previewResult = node.result ?? upstreamNode?.result ?? null;
-  const controls = config.controls || [];
+  const controls = config.controls ?? EMPTY_CONTROLS;
   const validFilterCount = useMemo(
     () => controls.filter((control) => isControlComplete(control)).length,
     [controls]
@@ -63,7 +67,7 @@ export default function ControlsNodeBody({ node }: Props) {
   useEffect(() => {
     if (validFilterCount === 0) return;
     void executeDirty(node.id);
-  }, [controls, executeDirty, node.id, validFilterCount]);
+  }, [executeDirty, node.id, validFilterCount]);
 
   const updateControlsConfig = (nextControls: ControlDefinition[]) => {
     updateNodeConfig(node.id, { controls: nextControls } as Partial<ControlsConfig>, { autoExecute: false });
@@ -94,7 +98,7 @@ export default function ControlsNodeBody({ node }: Props) {
   if (availableColumns.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-4 text-xs text-gray-400">
-        <span className="text-2xl">🎛️</span>
+        <LuFilter className="h-7 w-7" />
         Connect an input first
       </div>
     );

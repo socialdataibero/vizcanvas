@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { LuMerge } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { JoinConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -25,7 +26,7 @@ export default function JoinNodeBody({ node }: Props) {
   if (upstreamIds.length < 2) {
     return (
       <div className="flex flex-col items-center gap-2 py-4 text-xs text-gray-400">
-        <span className="text-2xl">🔗</span>
+        <LuMerge className="h-7 w-7" />
         Connect two inputs to join
       </div>
     );

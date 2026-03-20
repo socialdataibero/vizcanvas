@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { LuTableProperties } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { TableDisplayConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -28,7 +29,7 @@ export default function TableNodeBody({ node }: Props) {
   if (!node.result) {
     return (
       <div className="flex flex-col items-center gap-2 py-4 text-xs text-gray-400">
-        <span className="text-2xl">📋</span>
+        <LuTableProperties className="h-7 w-7" />
         Connect an input to display data
       </div>
     );

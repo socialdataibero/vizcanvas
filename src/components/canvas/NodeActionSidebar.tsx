@@ -3,9 +3,9 @@
 import React from "react";
 import { NodeType } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { getNodeTypeIcon } from "@/lib/iconography";
 
 interface Action {
-  icon: string;
   label: string;
   nodeType?: NodeType;
   onClick?: () => void;
@@ -14,55 +14,55 @@ interface Action {
 
 const ACTIONS_BY_TYPE: Record<string, Action[]> = {
   from: [
-    { icon: "📈", label: "Make chart",             nodeType: "chart" },
-    { icon: "📋", label: "View table",             nodeType: "table" },
-    { icon: "🎛️", label: "Interactive filter",    nodeType: "controls" },
-    { icon: "🧮", label: "Group by + Summarize",   nodeType: "group" },
-    { icon: "🧹", label: "Remove duplicates",      nodeType: "distinct" },
-    { icon: "🔗", label: "Join tables",            nodeType: "join" },
-    { icon: "🔍", label: "Custom SQL",             nodeType: "sql" },
-    { icon: "⋯", label: "More", separator: true },
+    { label: "Make chart",             nodeType: "chart" },
+    { label: "View table",             nodeType: "table" },
+    { label: "Interactive filter",     nodeType: "controls" },
+    { label: "Group by + Summarize",   nodeType: "group" },
+    { label: "Remove duplicates",      nodeType: "distinct" },
+    { label: "Join tables",            nodeType: "join" },
+    { label: "Custom SQL",             nodeType: "sql" },
+    { label: "More", separator: true },
   ],
   table: [
-    { icon: "📈", label: "Make chart",             nodeType: "chart" },
-    { icon: "🎛️", label: "Interactive filter",    nodeType: "controls" },
-    { icon: "🔗", label: "Join tables",            nodeType: "join" },
-    { icon: "🧮", label: "Group by + Summarize",   nodeType: "group" },
-    { icon: "🧹", label: "Remove duplicates",      nodeType: "distinct" },
-    { icon: "🔍", label: "Custom SQL",             nodeType: "sql" },
+    { label: "Make chart",             nodeType: "chart" },
+    { label: "Interactive filter",     nodeType: "controls" },
+    { label: "Join tables",            nodeType: "join" },
+    { label: "Group by + Summarize",   nodeType: "group" },
+    { label: "Remove duplicates",      nodeType: "distinct" },
+    { label: "Custom SQL",             nodeType: "sql" },
   ],
   sql: [
-    { icon: "📈", label: "Make chart",             nodeType: "chart" },
-    { icon: "📋", label: "View table",             nodeType: "table" },
-    { icon: "🎛️", label: "Interactive filter",    nodeType: "controls" },
-    { icon: "🔗", label: "Join tables",            nodeType: "join" },
-    { icon: "🧮", label: "Group by + Summarize",   nodeType: "group" },
+    { label: "Make chart",             nodeType: "chart" },
+    { label: "View table",             nodeType: "table" },
+    { label: "Interactive filter",     nodeType: "controls" },
+    { label: "Join tables",            nodeType: "join" },
+    { label: "Group by + Summarize",   nodeType: "group" },
   ],
   group: [
-    { icon: "📈", label: "Make chart",          nodeType: "chart" },
-    { icon: "📋", label: "View table",          nodeType: "table" },
-    { icon: "🧹", label: "Remove duplicates",   nodeType: "distinct" },
-    { icon: "🔍", label: "Custom SQL",          nodeType: "sql" },
+    { label: "Make chart",          nodeType: "chart" },
+    { label: "View table",          nodeType: "table" },
+    { label: "Remove duplicates",   nodeType: "distinct" },
+    { label: "Custom SQL",          nodeType: "sql" },
   ],
   join: [
-    { icon: "📈", label: "Make chart",             nodeType: "chart" },
-    { icon: "📋", label: "View table",             nodeType: "table" },
-    { icon: "🎛️", label: "Interactive filter",    nodeType: "controls" },
-    { icon: "🧮", label: "Group by + Summarize",   nodeType: "group" },
-    { icon: "🔍", label: "Custom SQL",             nodeType: "sql" },
+    { label: "Make chart",             nodeType: "chart" },
+    { label: "View table",             nodeType: "table" },
+    { label: "Interactive filter",     nodeType: "controls" },
+    { label: "Group by + Summarize",   nodeType: "group" },
+    { label: "Custom SQL",             nodeType: "sql" },
   ],
   chart: [
-    { icon: "📋", label: "View table",    nodeType: "table" },
-    { icon: "🔍", label: "Custom SQL",    nodeType: "sql" },
+    { label: "View table",    nodeType: "table" },
+    { label: "Custom SQL",    nodeType: "sql" },
   ],
   distinct: [
-    { icon: "📈", label: "Make chart",    nodeType: "chart" },
-    { icon: "📋", label: "View table",    nodeType: "table" },
+    { label: "Make chart",    nodeType: "chart" },
+    { label: "View table",    nodeType: "table" },
   ],
   controls: [
-    { icon: "📋", label: "View table",             nodeType: "table" },
-    { icon: "📈", label: "Make chart",             nodeType: "chart" },
-    { icon: "🧮", label: "Group by + Summarize",   nodeType: "group" },
+    { label: "View table",             nodeType: "table" },
+    { label: "Make chart",             nodeType: "chart" },
+    { label: "Group by + Summarize",   nodeType: "group" },
   ],
 };
 
@@ -105,15 +105,20 @@ export default function NodeActionSidebar({ nodeId, nodeType, position, nodeWidt
         action.separator ? (
           <div key={i} className="context-menu-separator my-1" />
         ) : (
-          <button
-            key={i}
-            className="node-action-btn"
-            onClick={() => handleAction(action)}
-            title={action.label}
-          >
-            <span>{action.icon}</span>
-            <span className="tooltip">{action.label}</span>
-          </button>
+          (() => {
+            const Icon = action.nodeType ? getNodeTypeIcon(action.nodeType) : null;
+            return (
+              <button
+                key={i}
+                className="node-action-btn"
+                onClick={() => handleAction(action)}
+                title={action.label}
+              >
+                {Icon ? <Icon className="h-4 w-4" /> : null}
+                <span className="tooltip">{action.label}</span>
+              </button>
+            );
+          })()
         )
       ))}
     </div>

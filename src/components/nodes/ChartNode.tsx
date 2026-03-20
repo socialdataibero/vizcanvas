@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type * as PlotModule from "@observablehq/plot";
 import { FiChevronsLeft, FiChevronsRight } from "react-icons/fi";
+import { LuChartColumnBig } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { ChartConfig, ChartType, ColumnInfo } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -790,13 +791,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             )}
             {data.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 h-40 text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
-                <span className="text-3xl">📈</span>
+                <LuChartColumnBig className="h-8 w-8" />
                 <span>Connect a data source</span>
               </div>
             ) : !chartReady ? (
               <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
-                  <span className="text-sm">📊</span>
+                  <LuChartColumnBig className="h-4 w-4" />
                   <span>{setupMessage}</span>
                 </div>
               </div>

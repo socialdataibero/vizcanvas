@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { LuPalette } from "react-icons/lu";
 import { useUIStore } from "@/stores/uiStore";
 
 export default function StylePanel() {
@@ -13,7 +14,7 @@ export default function StylePanel() {
         <button onClick={toggleStylePanel} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
       </div>
       <div className="p-3 flex flex-col items-center justify-center gap-2 text-center py-8">
-        <span className="text-2xl">🎨</span>
+        <LuPalette className="h-8 w-8 text-gray-300" />
         <p className="text-xs text-gray-500">Style controls coming soon</p>
         <p className="text-[10px] text-gray-400">Select a node to customize its appearance</p>
       </div>

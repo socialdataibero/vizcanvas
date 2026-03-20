@@ -8,6 +8,7 @@ import {
   getPresentationLinkLabel,
   MenuScope,
 } from "@/lib/contextMenuLabels";
+import { APP_ICONS, getNodeTypeIcon } from "@/lib/iconography";
 
 interface BuildNodeOptionsMenuItemsParams {
   scope: MenuScope;
@@ -25,14 +26,14 @@ export function buildNodeOptionsMenuItems({
   return [
     {
       type: "item",
-      icon: "📋",
+      icon: APP_ICONS.copy,
       label: getCopyLabel(scope),
       shortcut: "⌘C",
       onSelect: onCopy,
     },
     {
       type: "item",
-      icon: "🔁",
+      icon: APP_ICONS.duplicate,
       label: getDuplicateLabel(scope),
       shortcut: "⌘D",
       onSelect: onDuplicate,
@@ -40,7 +41,7 @@ export function buildNodeOptionsMenuItems({
     createContextMenuSeparator(),
     {
       type: "item",
-      icon: "🗑",
+      icon: APP_ICONS.delete,
       label: getDeleteLabel(scope),
       shortcut: "⌫",
       danger: true,
@@ -75,14 +76,14 @@ export function buildNodeContextMenuItems({
   return [
     {
       type: "item",
-      icon: "🔁",
+      icon: APP_ICONS.duplicate,
       label: getDuplicateLabel(scope),
       shortcut: "⌘D",
       onSelect: onDuplicate,
     },
     {
       type: "item",
-      icon: "📋",
+      icon: APP_ICONS.copy,
       label: getCopyLabel(scope),
       shortcut: "⌘C",
       onSelect: onCopy,
@@ -90,40 +91,40 @@ export function buildNodeContextMenuItems({
     createContextMenuSeparator(),
     {
       type: "item",
-      icon: "📊",
+      icon: getNodeTypeIcon("chart"),
       label: "Make chart",
       shortcut: "⌘⇧K",
       onSelect: onMakeChart,
     },
     {
       type: "item",
-      icon: "📋",
+      icon: getNodeTypeIcon("table"),
       label: "View table",
       onSelect: onViewTable,
     },
     createContextMenuSeparator(),
     {
       type: "item",
-      icon: "🔗",
+      icon: APP_ICONS.link,
       label: getLinkLabel(scope),
       onSelect: onCopyLink,
     },
     {
       type: "item",
-      icon: "🖥",
+      icon: APP_ICONS.presentationLink,
       label: getPresentationLinkLabel(scope),
       onSelect: onCopyPresentationLink,
     },
     {
       type: "item",
-      icon: "🖼",
+      icon: APP_ICONS.frame,
       label: getCreateFrameLabel(scope),
       onSelect: onCreateFrame,
     },
     createContextMenuSeparator(),
     {
       type: "item",
-      icon: "🗑",
+      icon: APP_ICONS.delete,
       label: getDeleteLabel(scope),
       shortcut: "⌫",
       danger: true,
@@ -148,26 +149,26 @@ export function buildFrameContextMenuItems({
   return [
     {
       type: "item",
-      icon: "✏️",
+      icon: APP_ICONS.rename,
       label: "Rename frame",
       onSelect: onRename,
     },
     {
       type: "item",
-      icon: "🔗",
+      icon: APP_ICONS.link,
       label: "Copy frame link",
       onSelect: onCopyLink,
     },
     {
       type: "item",
-      icon: "🖥",
+      icon: APP_ICONS.presentationLink,
       label: "Copy frame presentation link",
       onSelect: onCopyPresentationLink,
     },
     createContextMenuSeparator(),
     {
       type: "item",
-      icon: "🗑",
+      icon: APP_ICONS.delete,
       label: "Delete frame",
       danger: true,
       onSelect: onDelete,

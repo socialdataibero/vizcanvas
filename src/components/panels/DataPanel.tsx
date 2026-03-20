@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
+import { LuChartColumnBig, LuFolderOpen } from "react-icons/lu";
 import { useDataStore } from "@/stores/dataStore";
 import { isSupported } from "@/db/fileLoader";
 import { formatBytes } from "@/lib/utils";
@@ -90,7 +91,7 @@ export default function DataPanel({ onAddFromNode }: Props) {
       <div className="flex-1 overflow-y-auto py-1">
         {tables.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center px-4">
-            <div className="text-3xl">📂</div>
+            <LuFolderOpen className="h-8 w-8 text-gray-300" />
             <p className="text-xs text-gray-500">Drop CSV, JSON, or Parquet files here</p>
             <button
               onClick={async () => {
@@ -106,7 +107,10 @@ export default function DataPanel({ onAddFromNode }: Props) {
               className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               style={{ background: "#14b8a6" }}
             >
-              {uploading ? "Loading…" : "📊 Load Sample Data"}
+              <span className="inline-flex items-center gap-1.5">
+                <LuChartColumnBig className="h-3.5 w-3.5" />
+                <span>{uploading ? "Loading…" : "Load Sample Data"}</span>
+              </span>
             </button>
           </div>
         ) : (

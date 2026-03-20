@@ -43,7 +43,7 @@ export default function AddAnalysisStepMenu({
                 onClose();
               }}
             >
-              <span>{item.icon}</span>
+              {React.createElement(item.icon, { className: "h-4 w-4" })}
               {item.label}
             </button>
           ))}

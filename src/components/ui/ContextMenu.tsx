@@ -26,6 +26,7 @@ export default function ContextMenu({
           return <div key={`separator-${index}`} className="context-menu-separator" />;
         }
 
+        const Icon = item.icon;
         return (
           <button
             key={`${item.label}-${index}`}
@@ -35,7 +36,7 @@ export default function ContextMenu({
               item.onSelect();
             }}
           >
-            {item.icon ? <span>{item.icon}</span> : <span />}
+            {Icon ? <Icon className="h-4 w-4 flex-shrink-0" /> : <span className="h-4 w-4 flex-shrink-0" />}
             {item.label}
             {item.shortcut ? <span className="shortcut">{item.shortcut}</span> : null}
           </button>

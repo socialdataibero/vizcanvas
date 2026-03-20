@@ -49,21 +49,6 @@ export function getNodeTypeLabel(type: string): string {
   return labels[type] || type;
 }
 
-export function getNodeTypeIcon(type: string): string {
-  const icons: Record<string, string> = {
-    from: "🗂️",
-    sql: "🔍",
-    group: "🧮",
-    join: "🔗",
-    chart: "📈",
-    table: "📋",
-    distinct: "🧹",
-    javascript: "⚡",
-    controls: "🎛️",
-  };
-  return icons[type] || "📦";
-}
-
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
 }

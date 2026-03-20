@@ -8,7 +8,8 @@ import { buildNodeOptionsMenuItems } from "@/lib/contextMenuActions";
 import { getMenuTitle } from "@/lib/contextMenuLabels";
 import { CONTEXT_MENU_NODE_GROUPS } from "@/lib/nodeConfig";
 import { CANVAS_VIEWPORT_CHANGE_EVENT } from "@/lib/canvasViewportEvents";
-import { getNodeTypeLabel, getNodeTypeIcon } from "@/lib/utils";
+import { getNodeTypeLabel } from "@/lib/utils";
+import { getNodeTypeIcon } from "@/lib/iconography";
 import { NodeType } from "@/types/nodes";
 
 const NODE_HEADER_COLORS: Record<string, string> = {
@@ -72,7 +73,6 @@ export default function NodeShell({
 }: Props) {
   const scope = "node" as const;
   const label = getNodeTypeLabel(nodeType);
-  const icon = getNodeTypeIcon(nodeType);
   const headerColor = NODE_HEADER_COLORS[nodeType] || "#374151";
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -270,7 +270,7 @@ export default function NodeShell({
                     setAddMenuOpen(false);
                   }}
                 >
-                  <span>{item.icon}</span>
+                  {React.createElement(item.icon, { className: "h-4 w-4" })}
                   {item.label}
                 </button>
               ))}
@@ -311,7 +311,9 @@ export default function NodeShell({
             className="node-header-type"
             style={{ background: headerColor }}
           >
-            <span>{icon}</span>
+            {React.createElement(getNodeTypeIcon(nodeType), {
+              className: "h-3.5 w-3.5",
+            })}
             <span>{label}</span>
           </span>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { LuChartColumnBig, LuCopy, LuSquarePen } from "react-icons/lu";
 import { QueryResult, ColumnInfo } from "@/types/nodes";
 
 interface ColumnContextMenu {
@@ -257,15 +258,15 @@ export default function TablePreview({
           </button>
           <div className="context-menu-separator" />
           <button className="context-menu-item" onClick={() => { onCreateChart?.(colMenu.col); closeMenu(); }}>
-            <span>📊</span> Create chart
+            <LuChartColumnBig className="h-4 w-4" /> Create chart
             <span className="shortcut">⌘⇧K</span>
           </button>
           <button className="context-menu-item" onClick={closeMenu}>
-            <span>□+</span> Add derived column
+            <LuSquarePen className="h-4 w-4" /> Add derived column
           </button>
           <div className="context-menu-separator" />
           <button className="context-menu-item" onClick={() => { navigator.clipboard?.writeText(colMenu.col); closeMenu(); }}>
-            <span>📋</span> Copy column name
+            <LuCopy className="h-4 w-4" /> Copy column name
           </button>
         </div>
       )}

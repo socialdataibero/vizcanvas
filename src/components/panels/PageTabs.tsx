@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useCanvasStore } from "@/stores/canvasStore";
+import { APP_ICONS } from "@/lib/iconography";
 
 interface PageTabsProps {
   onSelectPage: (pageId: string) => void;
@@ -21,11 +22,21 @@ export default function PageTabs({
   const pages = useCanvasStore((s) => s.pages);
   const currentPageId = useCanvasStore((s) => s.currentPageId);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [contextMenuId, setContextMenuId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setContextMenuId(null);
-  }, [currentPageId, pages.length]);
+  const [contextMenuState, setContextMenuState] = useState<{
+    pageId: string;
+    pageCount: number;
+    currentPageId: string;
+  } | null>(null);
+  const RenameIcon = APP_ICONS.rename;
+  const DuplicateIcon = APP_ICONS.duplicate;
+  const DeleteIcon = APP_ICONS.delete;
+  const contextMenuId =
+    contextMenuState &&
+    contextMenuState.pageCount === pages.length &&
+    contextMenuState.currentPageId === currentPageId &&
+    pages.some((page) => page.id === contextMenuState.pageId)
+      ? contextMenuState.pageId
+      : null;
 
   useEffect(() => {
     if (!contextMenuId) return;
@@ -33,12 +44,12 @@ export default function PageTabs({
     const handlePointerDown = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
       if (event.target.closest("[data-page-tabs-root]")) return;
-      setContextMenuId(null);
+      setContextMenuState(null);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setContextMenuId(null);
+        setContextMenuState(null);
       }
     };
 
@@ -79,13 +90,17 @@ export default function PageTabs({
                   : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               }`}
               onClick={() => {
-                setContextMenuId(null);
+                setContextMenuState(null);
                 onSelectPage(page.id);
               }}
               onDoubleClick={() => setEditingId(page.id)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setContextMenuId(page.id);
+                setContextMenuState({
+                  pageId: page.id,
+                  pageCount: pages.length,
+                  currentPageId,
+                });
               }}
             >
               {page.name}
@@ -95,18 +110,18 @@ export default function PageTabs({
           {/* Page context menu */}
           {contextMenuId === page.id && (
             <div className="context-menu absolute bottom-full left-0 mb-1 z-50">
-              <button className="context-menu-item" onClick={() => { setEditingId(page.id); setContextMenuId(null); }}>
-                ✏️ Rename
+              <button className="context-menu-item" onClick={() => { setEditingId(page.id); setContextMenuState(null); }}>
+                <RenameIcon className="h-4 w-4" /> Rename
               </button>
-              <button className="context-menu-item" onClick={() => { onDuplicatePage(page.id); setContextMenuId(null); }}>
-                📋 Duplicate
+              <button className="context-menu-item" onClick={() => { onDuplicatePage(page.id); setContextMenuState(null); }}>
+                <DuplicateIcon className="h-4 w-4" /> Duplicate
               </button>
               {pages.length > 1 && (
-                <button className="context-menu-item text-red-600" onClick={() => { onDeletePage(page.id); setContextMenuId(null); }}>
-                  🗑️ Delete
+                <button className="context-menu-item text-red-600" onClick={() => { onDeletePage(page.id); setContextMenuState(null); }}>
+                  <DeleteIcon className="h-4 w-4" /> Delete
                 </button>
               )}
-              <button className="context-menu-item text-gray-400" onClick={() => setContextMenuId(null)}>
+              <button className="context-menu-item text-gray-400" onClick={() => setContextMenuState(null)}>
                 Cancel
               </button>
             </div>
@@ -116,7 +131,7 @@ export default function PageTabs({
 
       <button
         onClick={() => {
-          setContextMenuId(null);
+          setContextMenuState(null);
           onAddPage();
         }}
         className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 text-xs"

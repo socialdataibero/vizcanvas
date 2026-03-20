@@ -11,10 +11,12 @@ import {
   SQLConfig,
   TableDisplayConfig,
 } from "@/types/nodes";
+import type { IconType } from "react-icons";
+import { getNodeTypeIcon } from "@/lib/iconography";
 
 export interface NodePaletteItem {
   type: NodeType;
-  icon: string;
+  icon: IconType;
   label: string;
   shortcut?: string;
 }
@@ -26,15 +28,15 @@ export interface NodePaletteGroup {
 }
 
 const NODE_PALETTE_ITEMS: Record<NodeType, NodePaletteItem> = {
-  from: { type: "from", icon: "🗂️", label: "Source", shortcut: "F" },
-  sql: { type: "sql", icon: "🔍", label: "Custom SQL", shortcut: "S" },
-  table: { type: "table", icon: "📋", label: "View table", shortcut: "T" },
-  group: { type: "group", icon: "🧮", label: "Group by + Summarize", shortcut: "G" },
-  join: { type: "join", icon: "🔗", label: "Join tables", shortcut: "J" },
-  chart: { type: "chart", icon: "📈", label: "Make chart", shortcut: "C" },
-  distinct: { type: "distinct", icon: "🧹", label: "Remove duplicates", shortcut: "D" },
-  controls: { type: "controls", icon: "🎛️", label: "Interactive filter" },
-  javascript: { type: "javascript", icon: "⚡", label: "JavaScript" },
+  from: { type: "from", icon: getNodeTypeIcon("from"), label: "Source", shortcut: "F" },
+  sql: { type: "sql", icon: getNodeTypeIcon("sql"), label: "Custom SQL", shortcut: "S" },
+  table: { type: "table", icon: getNodeTypeIcon("table"), label: "View table", shortcut: "T" },
+  group: { type: "group", icon: getNodeTypeIcon("group"), label: "Group by + Summarize", shortcut: "G" },
+  join: { type: "join", icon: getNodeTypeIcon("join"), label: "Join tables", shortcut: "J" },
+  chart: { type: "chart", icon: getNodeTypeIcon("chart"), label: "Make chart", shortcut: "C" },
+  distinct: { type: "distinct", icon: getNodeTypeIcon("distinct"), label: "Remove duplicates", shortcut: "D" },
+  controls: { type: "controls", icon: getNodeTypeIcon("controls"), label: "Interactive filter" },
+  javascript: { type: "javascript", icon: getNodeTypeIcon("javascript"), label: "JavaScript" },
 };
 
 export const NODE_SHORTCUTS: Partial<Record<string, NodeType>> = {

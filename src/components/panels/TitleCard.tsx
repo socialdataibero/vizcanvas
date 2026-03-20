@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { LuDownload, LuFolderArchive, LuKeyboard } from "react-icons/lu";
 import { createPortal } from "react-dom";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useUIStore } from "@/stores/uiStore";
@@ -220,17 +221,23 @@ export default function TitleCard({
               });
             }}
           >
-            {busyAction === "export" ? "⏳ Exporting .vzc..." : "🗂️ Export .vzc"}
+            <span className="inline-flex items-center gap-2">
+              <LuFolderArchive className="h-4 w-4" />
+              <span>{busyAction === "export" ? "Exporting .vzc..." : "Export .vzc"}</span>
+            </span>
           </button>
           <button
             className="context-menu-item"
             disabled={busyAction === "import"}
             onClick={() => importInputRef.current?.click()}
           >
-            {busyAction === "import" ? "⏳ Importing .vzc..." : "📥 Import .vzc"}
+            <span className="inline-flex items-center gap-2">
+              <LuDownload className="h-4 w-4" />
+              <span>{busyAction === "import" ? "Importing .vzc..." : "Import .vzc"}</span>
+            </span>
           </button>
           <button className="context-menu-item" onClick={() => { toggleShortcutsModal(); setMenuOpen(false); }}>
-            ⌨️ Keyboard Shortcuts
+            <LuKeyboard className="h-4 w-4" /> Keyboard Shortcuts
           </button>
           <hr className="my-1 border-gray-200" />
           <button className="context-menu-item" onClick={() => setMenuOpen(false)}>
