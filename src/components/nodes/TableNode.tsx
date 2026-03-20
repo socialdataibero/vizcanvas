@@ -35,10 +35,11 @@ export default function TableNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="no-drag">
+    <div className="flex h-full min-h-0 flex-col no-drag">
       <TablePreview
         result={node.result}
         maxRows={50}
+        fillAvailableHeight
         onSort={handleSort}
         sortColumn={config.sortColumn}
         sortDirection={config.sortDirection}

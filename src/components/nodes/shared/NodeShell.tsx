@@ -181,6 +181,11 @@ export default function NodeShell({
     onDragStart(e);
   };
 
+  const handleWheelCapture = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) return;
+    e.stopPropagation();
+  };
+
   const displayName = nodeName || `${label}_${nodeId.slice(0, 6)}`;
   const optionsMenuItems = buildNodeOptionsMenuItems({
     scope,
@@ -362,13 +367,20 @@ export default function NodeShell({
 
         {/* Error message */}
         {error && (
-          <div className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 break-words max-h-[60px] overflow-y-auto">
+          <div className="subtle-scrollbar border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 break-words max-h-[60px] overflow-y-auto">
             {error.length > 200 ? error.slice(0, 200) + "..." : error}
           </div>
         )}
 
         {/* Body */}
-        {!collapsed && <div className={`node-body ${presentationMode ? "presentation-body" : ""}`}>{children}</div>}
+        {!collapsed && (
+          <div
+            className={`node-body subtle-scrollbar ${presentationMode ? "presentation-body" : ""}`}
+            onWheelCapture={handleWheelCapture}
+          >
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );

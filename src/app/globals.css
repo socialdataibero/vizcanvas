@@ -224,6 +224,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 12px;
 }
 
@@ -542,22 +543,47 @@ body {
 }
 
 /* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+:root {
+  --subtle-scrollbar-track: rgba(240, 242, 245, 0.82);
+  --subtle-scrollbar-thumb: rgba(209, 213, 219, 0.9);
+  --subtle-scrollbar-thumb-hover: rgba(203, 213, 225, 0.98);
 }
 
-::-webkit-scrollbar-track {
+.subtle-scrollbar,
+.node-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--subtle-scrollbar-thumb) var(--subtle-scrollbar-track);
+}
+
+.subtle-scrollbar::-webkit-scrollbar,
+.node-body::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-track,
+.node-body::-webkit-scrollbar-track {
+  background: var(--subtle-scrollbar-track);
+  border-radius: 999px;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb,
+.node-body::-webkit-scrollbar-thumb {
+  background: var(--subtle-scrollbar-thumb);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb:hover,
+.node-body::-webkit-scrollbar-thumb:hover {
+  background: var(--subtle-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-corner,
+.node-body::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
 }
 
 /* Status badges */

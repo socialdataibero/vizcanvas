@@ -24,9 +24,9 @@ export default function SQLNodeBody({ node }: Props) {
   };
 
   return (
-    <div className="space-y-2 no-drag">
+    <div className="flex h-full min-h-0 flex-col gap-2 no-drag">
       {/* SQL Editor */}
-      <div>
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">SQL Query</label>
         <textarea
           value={query}
@@ -45,7 +45,7 @@ export default function SQLNodeBody({ node }: Props) {
       </div>
 
       {/* Run button */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-shrink-0 items-center gap-2">
         <button
           onClick={handleRun}
           disabled={node.status === "running"}
@@ -57,10 +57,10 @@ export default function SQLNodeBody({ node }: Props) {
       </div>
 
       {/* Results preview */}
-      {node.result && <TablePreview result={node.result} maxRows={20} />}
+      {node.result && <TablePreview result={node.result} maxRows={20} fillAvailableHeight />}
 
       {node.result && (
-        <div className="text-[10px] text-gray-400 text-center">
+        <div className="flex-shrink-0 text-[10px] text-gray-400 text-center">
           {node.result.totalRows.toLocaleString()} rows
         </div>
       )}

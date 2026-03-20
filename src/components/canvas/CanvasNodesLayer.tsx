@@ -14,6 +14,7 @@ interface CanvasNodesLayerProps {
   presentationMode: boolean;
   isHandModeActive: boolean;
   getNodeWidth: (type: string) => number;
+  getNodeHeight: (type: string) => number;
   onNodeRightClick: (event: React.MouseEvent, nodeId: string) => void;
   onNodeDragStart: (nodeId: string) => (event: React.MouseEvent) => void;
   onPortDragStart: (nodeId: string) => () => void;
@@ -33,6 +34,7 @@ export default function CanvasNodesLayer({
   presentationMode,
   isHandModeActive,
   getNodeWidth,
+  getNodeHeight,
   onNodeRightClick,
   onNodeDragStart,
   onPortDragStart,
@@ -47,6 +49,11 @@ export default function CanvasNodesLayer({
     <>
       {nodes.map(([id, node]) => {
         const pos = nodePositions[id] || { x: 100, y: 100 };
+        const explicitSize = nodeSizes[id];
+        const resolvedSize = {
+          width: explicitSize?.width ?? getNodeWidth(node.type),
+          height: explicitSize?.height ?? getNodeHeight(node.type),
+        };
         return (
           <div
             key={id}
@@ -56,7 +63,7 @@ export default function CanvasNodesLayer({
             <DataNodeComponent
               node={node}
               position={pos}
-              size={nodeSizes[id] ?? { width: getNodeWidth(node.type) }}
+              size={resolvedSize}
               isSelected={selectedNodeIds.includes(id)}
               presentationMode={presentationMode}
               onDragStart={onNodeDragStart(id)}

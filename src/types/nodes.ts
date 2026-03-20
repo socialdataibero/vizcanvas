@@ -64,6 +64,7 @@ export interface JoinConfig {
 
 export interface ChartConfig {
   chartType?: ChartType;
+  chartCatalogId?: string;
   xColumn?: string;
   yColumn?: string;
   colorColumn?: string;

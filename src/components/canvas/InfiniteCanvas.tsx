@@ -4,7 +4,6 @@ import React, { useCallback, useEffect } from "react";
 import { useDagStore } from "@/stores/dagStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useCanvasStore } from "@/stores/canvasStore";
-import { dagStoreApi } from "@/stores/dagStore";
 import CanvasFramesLayer from "@/components/canvas/CanvasFramesLayer";
 import CanvasMenusOverlay from "@/components/canvas/CanvasMenusOverlay";
 import CanvasNodesLayer from "@/components/canvas/CanvasNodesLayer";
@@ -339,7 +338,7 @@ export default function InfiniteCanvas({
       setSelectedFrameId(frameId);
     }
     return frameId;
-  }, [clearNodeSelection, nodePositions, onCreateFrameFromSelection, visibleNodes]);
+  }, [clearNodeSelection, nodePositions, onCreateFrameFromSelection, setSelectedFrameId, visibleNodes]);
 
   const {
     handleFrameDragStart,
@@ -565,6 +564,7 @@ export default function InfiniteCanvas({
           presentationMode={presentationMode}
           isHandModeActive={isHandModeActive}
           getNodeWidth={getNodeWidth}
+          getNodeHeight={getNodeHeight}
           onNodeRightClick={handleNodeRightClick}
           onNodeDragStart={handleNodeDragStart}
           onPortDragStart={(nodeId) => () => handlePortDragStart(nodeId)}

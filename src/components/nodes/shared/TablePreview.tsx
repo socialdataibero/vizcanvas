@@ -18,6 +18,7 @@ interface Props {
   onCreateChart?: (column: string) => void;
   readOnly?: boolean;
   presentation?: boolean;
+  fillAvailableHeight?: boolean;
 }
 
 function getColTypeIcon(type: string): { icon: string; cls: string } {
@@ -80,6 +81,7 @@ export default function TablePreview({
   onCreateChart,
   readOnly = false,
   presentation = false,
+  fillAvailableHeight = false,
 }: Props) {
   const [colMenu, setColMenu] = useState<ColumnContextMenu | null>(null);
 
@@ -121,98 +123,106 @@ export default function TablePreview({
 
   return (
     <div
-      className={`relative overflow-auto ${presentation ? "max-h-[340px]" : "max-h-[260px]"}`}
+      className={`relative flex min-h-0 flex-col overflow-hidden ${
+        fillAvailableHeight
+          ? "h-full flex-1"
+          : presentation
+            ? "max-h-[340px]"
+            : "max-h-[260px]"
+      }`}
       onClick={closeMenu}
     >
-      <table className="preview-table">
-        <thead>
-          {/* Column header row */}
-          <tr>
-            {result.columns.map((col) => {
-              const { icon, cls } = getColTypeIcon(col.type);
-              return (
-                <th
-                  key={col.name}
-                  onClick={() => onSort?.(col.name)}
-                  onContextMenu={(e) => handleColRightClick(e, col.name)}
-                  className={`${onSort ? "cursor-pointer" : ""} ${sortColumn === col.name ? "sorted" : ""}`}
-                >
-                  <div className="flex items-center gap-1">
-                    <span className={cls}>{icon}</span>
-                    <span className="truncate max-w-[120px]">{col.name}</span>
-                    {sortColumn === col.name && (
-                      <span className="text-[10px]">{sortDirection === "asc" ? "↑" : "↓"}</span>
-                    )}
-                  </div>
-                </th>
-              );
-            })}
-          </tr>
-
-          {!presentation && (
-            <tr className="col-summary-row">
+      <div className="subtle-scrollbar min-h-0 flex-1 overflow-auto">
+        <table className="preview-table">
+          <thead>
+            {/* Column header row */}
+            <tr>
               {result.columns.map((col) => {
-                if (isNumericType(col.type)) {
-                  const bars = buildSparkline(rows, col);
-                  return (
-                    <td key={col.name}>
-                      {bars.length > 0 ? (
-                        <div className="mini-sparkline">
-                          {bars.map((h, i) => (
-                            <div
-                              key={i}
-                              className="bar"
-                              style={{ height: `${Math.max(10, h * 20)}px` }}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-[9px] text-gray-300">—</div>
+                const { icon, cls } = getColTypeIcon(col.type);
+                return (
+                  <th
+                    key={col.name}
+                    onClick={() => onSort?.(col.name)}
+                    onContextMenu={(e) => handleColRightClick(e, col.name)}
+                    className={`${onSort ? "cursor-pointer" : ""} ${sortColumn === col.name ? "sorted" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className={cls}>{icon}</span>
+                      <span className="truncate max-w-[120px]">{col.name}</span>
+                      {sortColumn === col.name && (
+                        <span className="text-[10px]">{sortDirection === "asc" ? "↑" : "↓"}</span>
                       )}
-                    </td>
-                  );
-                }
-                if (isTextType(col.type)) {
-                  const cats = buildCategorySummary(rows, col.name);
-                  const topN = cats.slice(0, 4);
-                  return (
-                    <td key={col.name}>
-                      <div className="flex gap-0.5 items-center flex-wrap">
-                        {topN.map((c) => (
-                          <span
-                            key={c.label}
-                            className="category-chip"
-                            style={{ opacity: 0.5 + c.pct * 0.5 }}
-                            title={`${c.label}: ${c.count}`}
-                          >
-                            {c.label.slice(0, 10)}
-                          </span>
-                        ))}
-                        {cats.length > 4 && (
-                          <span className="text-[9px] text-gray-400">+{cats.length - 4}</span>
-                        )}
-                      </div>
-                    </td>
-                  );
-                }
-                return <td key={col.name}><div className="text-[9px] text-gray-300">—</div></td>;
+                    </div>
+                  </th>
+                );
               })}
             </tr>
-          )}
-        </thead>
 
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>
-              {result.columns.map((col) => (
-                <td key={col.name}>
-                  {formatValue(row[col.name], col.type)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            {!presentation && (
+              <tr className="col-summary-row">
+                {result.columns.map((col) => {
+                  if (isNumericType(col.type)) {
+                    const bars = buildSparkline(rows, col);
+                    return (
+                      <td key={col.name}>
+                        {bars.length > 0 ? (
+                          <div className="mini-sparkline">
+                            {bars.map((h, i) => (
+                              <div
+                                key={i}
+                                className="bar"
+                                style={{ height: `${Math.max(10, h * 20)}px` }}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-[9px] text-gray-300">—</div>
+                        )}
+                      </td>
+                    );
+                  }
+                  if (isTextType(col.type)) {
+                    const cats = buildCategorySummary(rows, col.name);
+                    const topN = cats.slice(0, 4);
+                    return (
+                      <td key={col.name}>
+                        <div className="flex gap-0.5 items-center flex-wrap">
+                          {topN.map((c) => (
+                            <span
+                              key={c.label}
+                              className="category-chip"
+                              style={{ opacity: 0.5 + c.pct * 0.5 }}
+                              title={`${c.label}: ${c.count}`}
+                            >
+                              {c.label.slice(0, 10)}
+                            </span>
+                          ))}
+                          {cats.length > 4 && (
+                            <span className="text-[9px] text-gray-400">+{cats.length - 4}</span>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  }
+                  return <td key={col.name}><div className="text-[9px] text-gray-300">—</div></td>;
+                })}
+              </tr>
+            )}
+          </thead>
+
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {result.columns.map((col) => (
+                  <td key={col.name}>
+                    {formatValue(row[col.name], col.type)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* Footer */}
       <div

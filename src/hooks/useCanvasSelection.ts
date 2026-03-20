@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CanvasFrame } from "@/types/canvas";
 import { DAGNode } from "@/engine/types";
 import {
@@ -12,6 +12,10 @@ import {
   getSelectionBoundsFromRects,
   resolveSelectionScope,
 } from "@/lib/canvasSelection";
+
+function areNodeSelectionsEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((nodeId, index) => nodeId === right[index]);
+}
 
 interface UseCanvasSelectionParams {
   selectedNodeId: string | null;
@@ -34,46 +38,45 @@ export function useCanvasSelection({
   getNodeWidth,
   getNodeHeight,
 }: UseCanvasSelectionParams) {
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
+  const [rawSelectedNodeIds, setRawSelectedNodeIds] = useState<string[]>([]);
+  const [rawSelectedFrameId, setRawSelectedFrameId] = useState<string | null>(null);
   const [marqueeStart, setMarqueeStart] = useState<CanvasPoint | null>(null);
   const [marqueeCurrent, setMarqueeCurrent] = useState<CanvasPoint | null>(null);
   const marqueeBaseSelectionRef = useRef<string[]>([]);
 
-  useEffect(() => {
-    setSelectedNodeIds((current) =>
-      current.filter((nodeId) => Boolean(visibleNodes[nodeId]))
-    );
-  }, [visibleNodes]);
+  const selectedFrameId = useMemo(
+    () =>
+      rawSelectedFrameId && visibleFrames.some((frame) => frame.id === rawSelectedFrameId)
+        ? rawSelectedFrameId
+        : null,
+    [rawSelectedFrameId, visibleFrames]
+  );
 
-  useEffect(() => {
-    if (selectedFrameId && !visibleFrames.some((frame) => frame.id === selectedFrameId)) {
-      setSelectedFrameId(null);
+  const selectedNodeIds = useMemo(() => {
+    const visibleSelection = rawSelectedNodeIds.filter((nodeId) => Boolean(visibleNodes[nodeId]));
+    if (visibleSelection.length > 1) {
+      return visibleSelection;
     }
-  }, [selectedFrameId, visibleFrames]);
 
-  useEffect(() => {
-    if (selectedNodeIds.length > 1) return;
-    const nextSelection = selectedNodeId && visibleNodes[selectedNodeId] ? [selectedNodeId] : [];
-    const currentSelection = selectedNodeIds;
-    if (
-      nextSelection.length !== currentSelection.length ||
-      nextSelection[0] !== currentSelection[0]
-    ) {
-      setSelectedNodeIds(nextSelection);
-    }
-  }, [selectedNodeId, selectedNodeIds, visibleNodes]);
+    return selectedNodeId && visibleNodes[selectedNodeId] ? [selectedNodeId] : [];
+  }, [rawSelectedNodeIds, selectedNodeId, visibleNodes]);
+
+  const setSelectedFrameId = useCallback((frameId: string | null) => {
+    setRawSelectedFrameId(frameId);
+  }, []);
 
   const setNodeSelection = useCallback((nodeIds: string[]) => {
     const deduped = Array.from(new Set(nodeIds)).filter((nodeId) => Boolean(visibleNodes[nodeId]));
-    setSelectedNodeIds(deduped);
-    setSelectedFrameId(null);
+    setRawSelectedNodeIds((current) => (
+      areNodeSelectionsEqual(current, deduped) ? current : deduped
+    ));
+    setRawSelectedFrameId(null);
     setSelectedNode(deduped[deduped.length - 1] ?? null);
   }, [setSelectedNode, visibleNodes]);
 
   const clearNodeSelection = useCallback(() => {
-    setSelectedNodeIds([]);
-    setSelectedFrameId(null);
+    setRawSelectedNodeIds([]);
+    setRawSelectedFrameId(null);
     setSelectedNode(null);
   }, [setSelectedNode]);
 

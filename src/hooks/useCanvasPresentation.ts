@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { CanvasFrame, CanvasPage } from "@/types/canvas";
 import { DAGNode } from "@/engine/types";
 import { getNodeTypeLabel } from "@/lib/utils";
@@ -20,33 +20,48 @@ export function useCanvasPresentation({
   nodes,
   setCurrentPage,
 }: UseCanvasPresentationParams) {
-  const [presentationMode, setPresentationMode] = useState(false);
-  const [presentationFrameId, setPresentationFrameId] = useState<string | null>(null);
-  const [sharedNodeIds, setSharedNodeIds] = useState<string[]>([]);
+  const search = hydrated && typeof window !== "undefined" ? window.location.search : "";
 
-  useEffect(() => {
-    if (!hydrated || typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const requestedPageId = params.get("page");
-    const requestedMode = params.get("mode");
-    const requestedFrameId = params.get("frame");
-    const requestedNodeIds = (params.get("nodes") ?? "")
-      .split(",")
-      .map((nodeId) => nodeId.trim())
-      .filter(Boolean);
-    const hasRequestedNodes = requestedNodeIds.length > 0;
-
-    if (requestedPageId && pages.some((page) => page.id === requestedPageId) && requestedPageId !== currentPageId) {
-      setCurrentPage(requestedPageId);
+  const presentationRequest = useMemo(() => {
+    if (!hydrated || typeof window === "undefined") {
+      return {
+        requestedPageId: null,
+        requestedMode: null,
+        requestedFrameId: null,
+        requestedNodeIds: [] as string[],
+      };
     }
 
-    setPresentationFrameId(
-      requestedMode === "present" && !hasRequestedNodes ? requestedFrameId : null
-    );
-    setSharedNodeIds(requestedNodeIds);
-    setPresentationMode(requestedMode === "present");
-  }, [currentPageId, hydrated, pages, setCurrentPage]);
+    const params = new URLSearchParams(search);
+    return {
+      requestedPageId: params.get("page"),
+      requestedMode: params.get("mode"),
+      requestedFrameId: params.get("frame"),
+      requestedNodeIds: (params.get("nodes") ?? "")
+        .split(",")
+        .map((nodeId) => nodeId.trim())
+        .filter(Boolean),
+    };
+  }, [hydrated, search]);
+
+  const presentationMode = presentationRequest.requestedMode === "present";
+  const sharedNodeIds = presentationRequest.requestedNodeIds;
+  const presentationFrameId =
+    presentationMode && sharedNodeIds.length === 0
+      ? presentationRequest.requestedFrameId
+      : null;
+
+  useEffect(() => {
+    const { requestedPageId } = presentationRequest;
+
+    if (
+      requestedPageId &&
+      requestedPageId !== currentPageId &&
+      pages.some((page) => page.id === requestedPageId)
+    ) {
+      setCurrentPage(requestedPageId);
+    }
+  }, [currentPageId, pages, presentationRequest, setCurrentPage]);
 
   const presentationFrame = useMemo(
     () =>

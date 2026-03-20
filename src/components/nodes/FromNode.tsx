@@ -21,9 +21,9 @@ export default function FromNodeBody({ node }: Props) {
   };
 
   return (
-    <div className="space-y-2 no-drag">
+    <div className="flex h-full min-h-0 flex-col gap-2 no-drag">
       {/* Table selector */}
-      <div>
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">Source table</label>
         <select
           value={config.tableName || ""}
@@ -39,17 +39,17 @@ export default function FromNodeBody({ node }: Props) {
 
       {/* Filters summary */}
       {config.filters && config.filters.length > 0 && (
-        <div className="rounded bg-indigo-50 px-2 py-1 text-[10px] text-indigo-700">
+        <div className="flex-shrink-0 rounded bg-indigo-50 px-2 py-1 text-[10px] text-indigo-700">
           {config.filters.length} filter{config.filters.length > 1 ? "s" : ""} applied
         </div>
       )}
 
       {/* Results preview */}
-      {node.result && <TablePreview result={node.result} maxRows={20} />}
+      {node.result && <TablePreview result={node.result} maxRows={20} fillAvailableHeight />}
 
       {/* Row count */}
       {node.result && (
-        <div className="text-[10px] text-gray-400 text-center">
+        <div className="flex-shrink-0 text-[10px] text-gray-400 text-center">
           {node.result.totalRows.toLocaleString()} rows · {node.result.columns.length} columns
         </div>
       )}
