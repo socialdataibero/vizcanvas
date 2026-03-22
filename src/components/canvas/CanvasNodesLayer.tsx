@@ -50,9 +50,12 @@ export default function CanvasNodesLayer({
       {nodes.map(([id, node]) => {
         const pos = nodePositions[id] || { x: 100, y: 100 };
         const explicitSize = nodeSizes[id];
+        const baseHeight = getNodeHeight(node.type);
+        const explicitHeight = explicitSize?.height;
         const resolvedSize = {
           width: explicitSize?.width ?? getNodeWidth(node.type),
-          height: explicitSize?.height ?? getNodeHeight(node.type),
+          minHeight: explicitHeight ? baseHeight : undefined,
+          height: explicitHeight,
         };
         return (
           <div

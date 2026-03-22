@@ -1,17 +1,56 @@
 import { DAGNode } from "@/engine/types";
 import { CanvasFrame } from "@/types/canvas";
-import { NodeType } from "@/types/nodes";
+import { NodeType, QueryResult } from "@/types/nodes";
 
 const CANVAS_NODE_WIDTH: Partial<Record<NodeType, number>> = {
   chart: 460,
 };
 
-const CANVAS_NODE_HEIGHT: Partial<Record<NodeType, number>> = {
-  chart: 320,
+const EMPTY_STATE_PLACEMENT_HEIGHT: Partial<Record<NodeType, number>> = {
+  group: 120,
+  join: 120,
+  table: 120,
+  distinct: 120,
+  controls: 120,
+};
+
+type NodeLayoutSpec = {
+  fixedChromeHeight: number;
+  tableRows?: number;
+  hasColumnSummary?: boolean;
+};
+
+export const INITIAL_TABLE_VISIBLE_ROWS = 8;
+
+const TABLE_PREVIEW_LAYOUT = {
+  headerRow: 32,
+  columnSummaryRow: 28,
+  dataRow: 28,
+  footer: 31,
+};
+
+const NODE_LAYOUT_SPECS: Partial<Record<NodeType, NodeLayoutSpec>> = {
+  from: { fixedChromeHeight: 90, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  sql: { fixedChromeHeight: 170, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  group: { fixedChromeHeight: 454, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  join: { fixedChromeHeight: 214, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  table: { fixedChromeHeight: 0, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  distinct: { fixedChromeHeight: 120, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
+  controls: { fixedChromeHeight: 161, tableRows: INITIAL_TABLE_VISIBLE_ROWS, hasColumnSummary: true },
 };
 
 const DEFAULT_NODE_WIDTH = 320;
 const DEFAULT_NODE_HEIGHT = 220;
+const SOURCE_NODE_AUTO_HEIGHT_BASE = 181;
+const SOURCE_NODE_AUTO_ROW_HEIGHT = 28;
+const SOURCE_NODE_AUTO_MIN_VISIBLE_ROWS = INITIAL_TABLE_VISIBLE_ROWS;
+const SOURCE_NODE_AUTO_MAX_VISIBLE_ROWS = INITIAL_TABLE_VISIBLE_ROWS;
+const SOURCE_NODE_AUTO_MAX_HEIGHT = 448;
+const GROUP_NODE_AUTO_HEIGHT_BASE = 545;
+const GROUP_NODE_AUTO_ROW_HEIGHT = 28;
+const GROUP_NODE_AUTO_MIN_VISIBLE_ROWS = INITIAL_TABLE_VISIBLE_ROWS;
+const GROUP_NODE_AUTO_MAX_VISIBLE_ROWS = INITIAL_TABLE_VISIBLE_ROWS;
+const GROUP_NODE_AUTO_MAX_HEIGHT = 872;
 const FRAME_PADDING = {
   left: 28,
   right: 52,
@@ -31,12 +70,76 @@ export function getCanvasNodeWidth(type: NodeType): number {
   return CANVAS_NODE_WIDTH[type] ?? DEFAULT_NODE_WIDTH;
 }
 
+export function getTablePreviewMinHeight(rows: number, hasColumnSummary = true): number {
+  return (
+    TABLE_PREVIEW_LAYOUT.headerRow +
+    (hasColumnSummary ? TABLE_PREVIEW_LAYOUT.columnSummaryRow : 0) +
+    rows * TABLE_PREVIEW_LAYOUT.dataRow +
+    TABLE_PREVIEW_LAYOUT.footer
+  );
+}
+
+export function getBaseCanvasNodeHeight(nodeType: NodeType): number {
+  if (nodeType === "chart") {
+    return 320;
+  }
+
+  const spec = NODE_LAYOUT_SPECS[nodeType];
+  if (!spec?.tableRows) {
+    return DEFAULT_NODE_HEIGHT;
+  }
+
+  return spec.fixedChromeHeight + getTablePreviewMinHeight(spec.tableRows, spec.hasColumnSummary);
+}
+
 export function getCanvasNodeHeight(
   nodeType: NodeType,
   nodeId: string,
   nodeSizes: Record<string, { width: number; height: number }>
 ): number {
-  return nodeSizes[nodeId]?.height ?? CANVAS_NODE_HEIGHT[nodeType] ?? DEFAULT_NODE_HEIGHT;
+  return nodeSizes[nodeId]?.height ?? getBaseCanvasNodeHeight(nodeType);
+}
+
+export function getCanvasPlacementHeight(nodeType: NodeType): number {
+  return EMPTY_STATE_PLACEMENT_HEIGHT[nodeType] ?? getBaseCanvasNodeHeight(nodeType);
+}
+
+export function getSourceNodeAutoHeight(result: QueryResult | null | undefined): number {
+  if (!result) {
+    return getCanvasNodeHeight("from", "", {});
+  }
+
+  const visibleRows = Math.min(
+    SOURCE_NODE_AUTO_MAX_VISIBLE_ROWS,
+    Math.max(SOURCE_NODE_AUTO_MIN_VISIBLE_ROWS, result.rows.length)
+  );
+
+  return Math.max(
+    getCanvasNodeHeight("from", "", {}),
+    Math.min(
+      SOURCE_NODE_AUTO_MAX_HEIGHT,
+      SOURCE_NODE_AUTO_HEIGHT_BASE + visibleRows * SOURCE_NODE_AUTO_ROW_HEIGHT
+    )
+  );
+}
+
+export function getGroupNodeAutoHeight(result: QueryResult | null | undefined): number {
+  if (!result) {
+    return getCanvasNodeHeight("group", "", {});
+  }
+
+  const visibleRows = Math.min(
+    GROUP_NODE_AUTO_MAX_VISIBLE_ROWS,
+    Math.max(GROUP_NODE_AUTO_MIN_VISIBLE_ROWS, result.rows.length)
+  );
+
+  return Math.max(
+    getCanvasNodeHeight("group", "", {}),
+    Math.min(
+      GROUP_NODE_AUTO_MAX_HEIGHT,
+      GROUP_NODE_AUTO_HEIGHT_BASE + visibleRows * GROUP_NODE_AUTO_ROW_HEIGHT
+    )
+  );
 }
 
 export function getCanvasNodeRect(

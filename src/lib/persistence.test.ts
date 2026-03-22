@@ -84,6 +84,98 @@ describe("parsePersistedAppState", () => {
       ],
     });
   });
+
+  it("raises persisted source nodes to the new minimum height", () => {
+    const state = createPersistedState();
+    state.nodeSizes = {
+      source: { width: 320, height: 220 },
+      group: { width: 320, height: 220 },
+      sql: { width: 320, height: 220 },
+    };
+    state.dag.nodes = {
+      source: {
+        id: "source",
+        type: "from",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+      group: {
+        id: "group",
+        type: "group",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+      sql: {
+        id: "sql",
+        type: "sql",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+    };
+
+    expect(parsePersistedAppState(JSON.stringify(state))).toMatchObject({
+      nodeSizes: {
+        source: { width: 320, height: 405 },
+        group: { width: 320, height: 769 },
+        sql: { width: 320, height: 485 },
+      },
+    });
+  });
+
+  it("resets legacy auto-sized table nodes back to the natural default height", () => {
+    const state = createPersistedState();
+    state.nodeSizes = {
+      source: { width: 320, height: 405 },
+      group: { width: 320, height: 769 },
+      table: { width: 320, height: 400 },
+    };
+    state.dag.nodes = {
+      source: {
+        id: "source",
+        type: "from",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+      group: {
+        id: "group",
+        type: "group",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+      table: {
+        id: "table",
+        type: "table",
+        config: {},
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: "page-1",
+      },
+    };
+
+    expect(parsePersistedAppState(JSON.stringify(state))).toMatchObject({
+      nodeSizes: {
+        source: { width: 320, height: 405 },
+        group: { width: 320, height: 769 },
+        table: { width: 320, height: 315 },
+      },
+    });
+  });
 });
 
 describe("buildPersistedAppState", () => {

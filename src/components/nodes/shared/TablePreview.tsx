@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import { LuChartColumnBig, LuCopy, LuSquarePen } from "react-icons/lu";
+import { getTablePreviewMinHeight, INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import { QueryResult, ColumnInfo } from "@/types/nodes";
 
 interface ColumnContextMenu {
@@ -20,6 +21,7 @@ interface Props {
   readOnly?: boolean;
   presentation?: boolean;
   fillAvailableHeight?: boolean;
+  initialVisibleRows?: number;
 }
 
 function getColTypeIcon(type: string): { icon: string; cls: string } {
@@ -83,6 +85,7 @@ export default function TablePreview({
   readOnly = false,
   presentation = false,
   fillAvailableHeight = false,
+  initialVisibleRows = INITIAL_TABLE_VISIBLE_ROWS,
 }: Props) {
   const [colMenu, setColMenu] = useState<ColumnContextMenu | null>(null);
 
@@ -92,7 +95,11 @@ export default function TablePreview({
     return <div className="p-3 text-xs text-gray-400 text-center">No data</div>;
   }
 
-  const rows = result.rows.slice(0, maxRows);
+  const previewRowLimit = fillAvailableHeight
+    ? maxRows
+    : Math.min(maxRows, initialVisibleRows);
+  const rows = result.rows.slice(0, previewRowLimit);
+  const initialPreviewHeight = getTablePreviewMinHeight(initialVisibleRows, !presentation);
 
   const formatValue = (val: unknown, colType: string): React.ReactNode => {
     if (val === null || val === undefined) return <span className="text-gray-300 italic text-[10px]">∅</span>;
@@ -118,19 +125,23 @@ export default function TablePreview({
     setColMenu({ col: colName, x: e.clientX, y: e.clientY });
   };
 
-  const visibleRowsLabel = result.totalRows > maxRows
-    ? `Showing ${maxRows} of ${result.totalRows.toLocaleString()} rows`
+  const visibleRowsLabel = result.totalRows > previewRowLimit
+    ? `Showing ${previewRowLimit} of ${result.totalRows.toLocaleString()} rows`
     : `${result.totalRows.toLocaleString()} rows`;
 
   return (
     <div
       className={`relative flex min-h-0 flex-col overflow-hidden ${
-        fillAvailableHeight
-          ? "h-full flex-1"
-          : presentation
-            ? "max-h-[340px]"
-            : "max-h-[260px]"
+        fillAvailableHeight ? "h-full min-h-0 flex-1" : ""
       }`}
+      style={
+        fillAvailableHeight
+          ? undefined
+          : {
+              height: initialPreviewHeight,
+              maxHeight: initialPreviewHeight,
+            }
+      }
       onClick={closeMenu}
     >
       <div className="subtle-scrollbar min-h-0 flex-1 overflow-auto">

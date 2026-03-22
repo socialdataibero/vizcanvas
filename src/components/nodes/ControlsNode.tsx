@@ -6,11 +6,13 @@ import { DAGNode } from "@/engine/types";
 import { ControlsConfig, ControlDefinition } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
 import { v4 as uuidv4 } from "uuid";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
 const EMPTY_COLUMNS: { name: string; type: string }[] = [];
@@ -49,7 +51,7 @@ function isControlComplete(control: ControlDefinition): boolean {
   }
 }
 
-export default function ControlsNodeBody({ node }: Props) {
+export default function ControlsNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as ControlsConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const executeDirty = useDagStore((s) => s.executeDirty);
@@ -105,7 +107,7 @@ export default function ControlsNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="space-y-3 no-drag">
+    <div className={`flex min-h-0 flex-col gap-3 no-drag ${expandTablePreview ? "h-full" : ""}`}>
       <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="text-[11px] font-semibold text-sky-900">Interactive filters</div>
@@ -169,7 +171,7 @@ export default function ControlsNodeBody({ node }: Props) {
       ))}
 
       {/* Add control buttons */}
-      <div className="flex gap-1">
+      <div className="flex flex-shrink-0 gap-1">
         {(["dropdown", "text", "slider"] as ControlDefinition["type"][]).map((type) => (
           <button
             key={type}
@@ -181,7 +183,7 @@ export default function ControlsNodeBody({ node }: Props) {
         ))}
       </div>
 
-      <div className="text-[10px] text-gray-400">
+      <div className="flex-shrink-0 text-[10px] text-gray-400">
         {validFilterCount === 0
           ? "Showing input rows. Complete a filter to apply it."
           : hasPendingFilters
@@ -189,7 +191,13 @@ export default function ControlsNodeBody({ node }: Props) {
             : "Filters applied."}
       </div>
 
-      {previewResult && <TablePreview result={previewResult} maxRows={10} />}
+      {previewResult && (
+        <TablePreview
+          result={previewResult}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
     </div>
   );
 }

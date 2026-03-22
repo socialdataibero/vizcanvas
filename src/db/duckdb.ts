@@ -271,6 +271,11 @@ export async function clearAllTables(): Promise<void> {
   }
 }
 
+export async function dropTable(tableName: string): Promise<void> {
+  const connection = await getConnection();
+  await connection.query(`DROP TABLE IF EXISTS ${escapeSqlIdentifier(tableName)}`);
+}
+
 export async function importTableData(
   tableName: string,
   rows: Record<string, unknown>[],

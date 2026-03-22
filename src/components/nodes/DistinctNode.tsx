@@ -4,14 +4,16 @@ import React from "react";
 import { DAGNode } from "@/engine/types";
 import { DistinctConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function DistinctNodeBody({ node }: Props) {
+export default function DistinctNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as DistinctConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const executeDirty = useDagStore((s) => s.executeDirty);
@@ -36,8 +38,8 @@ export default function DistinctNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="space-y-3 no-drag">
-      <div className="rounded-lg border border-cyan-100 bg-cyan-50/70 px-3 py-2">
+    <div className={`flex min-h-0 flex-col gap-3 no-drag ${expandTablePreview ? "h-full" : ""}`}>
+      <div className="flex-shrink-0 rounded-lg border border-cyan-100 bg-cyan-50/70 px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="text-[11px] font-semibold text-cyan-900">Keep unique rows</div>
           <NodeInfoTooltip
@@ -62,12 +64,18 @@ export default function DistinctNodeBody({ node }: Props) {
 
       <button
         onClick={() => void executeDirty(node.id)}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 w-full"
+        className="w-full flex-shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
       >
         ▶ Remove duplicates
       </button>
 
-      {node.result && <TablePreview result={node.result} maxRows={20} />}
+      {node.result && (
+        <TablePreview
+          result={node.result}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
     </div>
   );
 }

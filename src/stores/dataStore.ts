@@ -1,6 +1,6 @@
 import { createStore, useStore } from "@/lib/createStore";
 import { DataTable, ColumnStats } from "@/types/data";
-import { exportTableData, getTables, getTableSchema, importTableData, initDuckDB } from "@/db/duckdb";
+import { dropTable, exportTableData, getTables, getTableSchema, importTableData, initDuckDB } from "@/db/duckdb";
 import { loadDataFile } from "@/db/fileLoader";
 import { getColumnStats } from "@/db/queries";
 import { readPersistedUploadedTables, writePersistedUploadedTables } from "@/lib/persistence";
@@ -30,9 +30,20 @@ const dataStore = createStore<DataState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await initDuckDB();
+      const existingTablesBeforeImport = await getTables();
+      const duplicateSampleTables = existingTablesBeforeImport.filter((name) => /^sample_data_\d+$/.test(name));
+      if (existingTablesBeforeImport.includes("sample_data") && duplicateSampleTables.length > 0) {
+        await Promise.all(duplicateSampleTables.map((tableName) => dropTable(tableName)));
+      }
       const persistedTables = readPersistedUploadedTables();
+      const cleanedPersistedTables = persistedTables.filter(
+        (table) => table.name === "sample_data" || !/^sample_data_\d+$/.test(table.name)
+      );
+      if (cleanedPersistedTables.length !== persistedTables.length) {
+        writePersistedUploadedTables(cleanedPersistedTables);
+      }
       const existingTables = new Set(await getTables());
-      for (const table of persistedTables) {
+      for (const table of cleanedPersistedTables) {
         if (existingTables.has(table.name)) continue;
         await importTableData(table.name, table.rows, table.columns);
       }

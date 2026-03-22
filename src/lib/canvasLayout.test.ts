@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFrameBoundsFromNodeRects,
+  getBaseCanvasNodeHeight,
+  getCanvasPlacementHeight,
   getCanvasNodeHeight,
   getCanvasNodeRect,
   getCanvasNodeWidth,
+  getGroupNodeAutoHeight,
+  getSourceNodeAutoHeight,
+  getTablePreviewMinHeight,
   normalizeFrameMembership,
 } from "@/lib/canvasLayout";
 import type { DAGNode } from "@/engine/types";
@@ -22,11 +27,27 @@ function createNode(id: string, pageId = "page-1"): DAGNode {
 }
 
 describe("canvas node sizing", () => {
-  it("uses chart-specific dimensions and falls back for other node types", () => {
+  it("derives a common table preview minimum height from the box model", () => {
+    expect(getTablePreviewMinHeight(8, true)).toBe(315);
+    expect(getTablePreviewMinHeight(8, false)).toBe(287);
+  });
+
+  it("uses node-specific dimensions and falls back for other node types", () => {
     expect(getCanvasNodeWidth("chart")).toBe(460);
     expect(getCanvasNodeWidth("sql")).toBe(320);
+    expect(getBaseCanvasNodeHeight("from")).toBe(405);
+    expect(getBaseCanvasNodeHeight("group")).toBe(769);
     expect(getCanvasNodeHeight("chart", "chart-1", {})).toBe(320);
-    expect(getCanvasNodeHeight("sql", "sql-1", {})).toBe(220);
+    expect(getCanvasNodeHeight("from", "from-1", {})).toBe(405);
+    expect(getCanvasNodeHeight("group", "group-1", {})).toBe(769);
+    expect(getCanvasNodeHeight("sql", "sql-1", {})).toBe(485);
+    expect(getCanvasNodeHeight("join", "join-1", {})).toBe(529);
+    expect(getCanvasNodeHeight("table", "table-1", {})).toBe(315);
+    expect(getCanvasNodeHeight("distinct", "distinct-1", {})).toBe(435);
+    expect(getCanvasNodeHeight("controls", "controls-1", {})).toBe(476);
+    expect(getCanvasPlacementHeight("group")).toBe(120);
+    expect(getCanvasPlacementHeight("controls")).toBe(120);
+    expect(getCanvasPlacementHeight("from")).toBe(405);
   });
 
   it("builds a node rect only when a position exists", () => {
@@ -48,6 +69,62 @@ describe("canvas node sizing", () => {
     });
 
     expect(getCanvasNodeRect(node, "node-1", {}, {})).toBeNull();
+  });
+
+  it("grows source nodes after table data loads, within bounds", () => {
+    expect(getSourceNodeAutoHeight(null)).toBe(405);
+    expect(
+      getSourceNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 1 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 16,
+        sql: "select * from sample_data",
+      })
+    ).toBe(405);
+    expect(
+      getSourceNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 8 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 16,
+        sql: "select * from sample_data",
+      })
+    ).toBe(405);
+    expect(
+      getSourceNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 20 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 200,
+        sql: "select * from sample_data",
+      })
+    ).toBe(405);
+  });
+
+  it("grows group nodes after table data loads, within bounds", () => {
+    expect(getGroupNodeAutoHeight(null)).toBe(769);
+    expect(
+      getGroupNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 1 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 16,
+        sql: "select * from sample_data",
+      })
+    ).toBe(769);
+    expect(
+      getGroupNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 8 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 16,
+        sql: "select * from sample_data",
+      })
+    ).toBe(769);
+    expect(
+      getGroupNodeAutoHeight({
+        columns: [{ name: "product", type: "TEXT", nullable: false }],
+        rows: Array.from({ length: 20 }, (_, index) => ({ product: `row-${index}` })),
+        totalRows: 200,
+        sql: "select * from sample_data",
+      })
+    ).toBe(769);
   });
 });
 

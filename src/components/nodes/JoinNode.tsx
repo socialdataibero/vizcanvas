@@ -5,14 +5,16 @@ import { LuMerge } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { JoinConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function JoinNodeBody({ node }: Props) {
+export default function JoinNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as JoinConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const executeDirty = useDagStore((s) => s.executeDirty);
@@ -33,8 +35,8 @@ export default function JoinNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="space-y-2 no-drag">
-      <div className="rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2">
+    <div className={`flex min-h-0 flex-col gap-2 no-drag ${expandTablePreview ? "h-full" : ""}`}>
+      <div className="flex-shrink-0 rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="text-[11px] font-semibold text-amber-900">Join two sources</div>
           <NodeInfoTooltip
@@ -45,7 +47,7 @@ export default function JoinNodeBody({ node }: Props) {
       </div>
 
       {/* Join type */}
-      <div>
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">Join Type</label>
         <select
           value={config.joinType || "INNER"}
@@ -59,7 +61,7 @@ export default function JoinNodeBody({ node }: Props) {
       </div>
 
       {/* Left column */}
-      <div>
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">Left Column</label>
         <select
           value={config.leftColumn || ""}
@@ -74,7 +76,7 @@ export default function JoinNodeBody({ node }: Props) {
       </div>
 
       {/* Right column */}
-      <div>
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">Right Column</label>
         <select
           value={config.rightColumn || ""}
@@ -90,12 +92,18 @@ export default function JoinNodeBody({ node }: Props) {
 
       <button
         onClick={() => void executeDirty(node.id)}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 w-full"
+        className="w-full flex-shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
       >
         ▶ Run join
       </button>
 
-      {node.result && <TablePreview result={node.result} maxRows={20} />}
+      {node.result && (
+        <TablePreview
+          result={node.result}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
     </div>
   );
 }

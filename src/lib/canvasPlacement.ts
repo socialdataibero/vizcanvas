@@ -39,8 +39,141 @@ interface AddNodeWithCollisionAvoidanceParams extends PlacementParams {
   collisionPadding?: number;
 }
 
+interface BuildCenteredDownstreamNodePositionParams {
+  sourcePosition: NodePosition;
+  sourceSize: NodeSize;
+  targetHeight: number;
+  targetType?: NodeType;
+  gapX?: number;
+}
+
+interface BuildLaneDownstreamNodePositionParams {
+  sourcePosition: NodePosition;
+  sourceSize: NodeSize;
+  gapX?: number;
+}
+
+interface BuildFirstNodeVerticalPositionParams {
+  surfaceHeight: number;
+  nodeHeight: number;
+  x?: number;
+}
+
+interface FindRightmostAnchorNodeIdParams {
+  visibleNodes: Record<string, DAGNode>;
+  nodePositions: Record<string, NodePosition>;
+  nodeSizes: Record<string, NodeSize>;
+  getNodeWidth: (type: string) => number;
+}
+
+interface FindPreferredAnchorNodeIdParams extends FindRightmostAnchorNodeIdParams {
+  selectedNodeId?: string | null;
+}
+
 export const DOWNSTREAM_COLLISION_PADDING = 28;
 export const DOWNSTREAM_COLLISION_STEP_Y = 56;
+export const DOWNSTREAM_NODE_GAP_X = 96;
+export const FIRST_NODE_X = 360;
+export const FIRST_NODE_VIEWPORT_Y_RATIO = 0.5;
+const TOP_HEAVY_NODE_TYPES = new Set<NodeType>(["group", "join", "distinct", "controls"]);
+const DEFAULT_TARGET_VISUAL_ANCHOR_RATIO = 0.5;
+const TOP_HEAVY_TARGET_VISUAL_ANCHOR_RATIO = 0.33;
+const DOWNSTREAM_TOP_OFFSET_MIN = -16;
+const DOWNSTREAM_TOP_OFFSET_MAX = 48;
+
+function getSymmetricStepMultiplier(attempt: number): number {
+  if (attempt === 0) return 0;
+  const magnitude = Math.ceil(attempt / 2);
+  return attempt % 2 === 1 ? -magnitude : magnitude;
+}
+
+export function buildFirstNodeVerticalPosition({
+  surfaceHeight,
+  nodeHeight,
+  x = FIRST_NODE_X,
+}: BuildFirstNodeVerticalPositionParams): NodePosition {
+  return {
+    x,
+    y: Math.round(surfaceHeight * FIRST_NODE_VIEWPORT_Y_RATIO - nodeHeight / 2),
+  };
+}
+
+export function buildCenteredDownstreamNodePosition({
+  sourcePosition,
+  sourceSize,
+  targetHeight,
+  targetType,
+  gapX = DOWNSTREAM_NODE_GAP_X,
+}: BuildCenteredDownstreamNodePositionParams): NodePosition {
+  const visualAnchorRatio = targetType && TOP_HEAVY_NODE_TYPES.has(targetType)
+    ? TOP_HEAVY_TARGET_VISUAL_ANCHOR_RATIO
+    : DEFAULT_TARGET_VISUAL_ANCHOR_RATIO;
+  const idealY = Math.round(
+    sourcePosition.y + sourceSize.height / 2 - targetHeight * visualAnchorRatio
+  );
+  const minY = sourcePosition.y + DOWNSTREAM_TOP_OFFSET_MIN;
+  const maxY = sourcePosition.y + DOWNSTREAM_TOP_OFFSET_MAX;
+
+  return {
+    x: sourcePosition.x + sourceSize.width + gapX,
+    y: Math.max(minY, Math.min(maxY, idealY)),
+  };
+}
+
+export function buildLaneDownstreamNodePosition({
+  sourcePosition,
+  sourceSize,
+  gapX = DOWNSTREAM_NODE_GAP_X,
+}: BuildLaneDownstreamNodePositionParams): NodePosition {
+  return {
+    x: sourcePosition.x + sourceSize.width + gapX,
+    y: sourcePosition.y,
+  };
+}
+
+export function findRightmostAnchorNodeId({
+  visibleNodes,
+  nodePositions,
+  nodeSizes,
+  getNodeWidth,
+}: FindRightmostAnchorNodeIdParams): string | null {
+  let bestNodeId: string | null = null;
+  let bestRightEdge = Number.NEGATIVE_INFINITY;
+
+  for (const [nodeId, node] of Object.entries(visibleNodes)) {
+    const position = nodePositions[nodeId];
+    if (!position) continue;
+
+    const width = nodeSizes[nodeId]?.width ?? getNodeWidth(node.type);
+    const rightEdge = position.x + width;
+
+    if (rightEdge > bestRightEdge) {
+      bestRightEdge = rightEdge;
+      bestNodeId = nodeId;
+    }
+  }
+
+  return bestNodeId;
+}
+
+export function findPreferredAnchorNodeId({
+  selectedNodeId,
+  visibleNodes,
+  nodePositions,
+  nodeSizes,
+  getNodeWidth,
+}: FindPreferredAnchorNodeIdParams): string | null {
+  if (selectedNodeId && visibleNodes[selectedNodeId] && nodePositions[selectedNodeId]) {
+    return selectedNodeId;
+  }
+
+  return findRightmostAnchorNodeId({
+    visibleNodes,
+    nodePositions,
+    nodeSizes,
+    getNodeWidth,
+  });
+}
 
 export function rectanglesOverlap(
   a: CanvasRect,
@@ -111,9 +244,10 @@ export function findAvailableNodePosition({
       return candidate;
     }
 
+    const stepMultiplier = getSymmetricStepMultiplier(attempt + 1);
     candidate = {
-      x: preferredPosition.x + (attempt + 1) * stepX,
-      y: preferredPosition.y + (attempt + 1) * stepY,
+      x: preferredPosition.x + Math.abs(stepMultiplier) * stepX,
+      y: preferredPosition.y + stepMultiplier * stepY,
     };
   }
 
@@ -159,9 +293,10 @@ export function addNodeWithCollisionAvoidance({
       return onAddNode(type, candidate);
     }
 
+    const stepMultiplier = getSymmetricStepMultiplier(attempt + 1);
     candidate = {
       x: preferredPosition.x,
-      y: preferredPosition.y + (attempt + 1) * stepY,
+      y: preferredPosition.y + stepMultiplier * stepY,
     };
   }
 

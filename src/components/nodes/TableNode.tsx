@@ -5,13 +5,15 @@ import { LuTableProperties } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { TableDisplayConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function TableNodeBody({ node }: Props) {
+export default function TableNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as TableDisplayConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
 
@@ -36,11 +38,11 @@ export default function TableNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col no-drag">
+    <div className={`flex min-h-0 flex-col no-drag ${expandTablePreview ? "h-full" : ""}`}>
       <TablePreview
         result={node.result}
-        maxRows={50}
-        fillAvailableHeight
+        maxRows={expandTablePreview ? 50 : INITIAL_TABLE_VISIBLE_ROWS}
+        fillAvailableHeight={expandTablePreview}
         onSort={handleSort}
         sortColumn={config.sortColumn}
         sortDirection={config.sortDirection}

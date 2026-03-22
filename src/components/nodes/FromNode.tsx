@@ -5,13 +5,15 @@ import { DAGNode } from "@/engine/types";
 import { FromConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
 import { useDataStore } from "@/stores/dataStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function FromNodeBody({ node }: Props) {
+export default function FromNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as FromConfig;
   const tables = useDataStore((s) => s.tables);
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
@@ -21,7 +23,7 @@ export default function FromNodeBody({ node }: Props) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 no-drag">
+    <div className={`flex min-h-0 flex-col gap-2 no-drag ${expandTablePreview ? "h-full" : ""}`}>
       {/* Table selector */}
       <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">Source table</label>
@@ -45,7 +47,13 @@ export default function FromNodeBody({ node }: Props) {
       )}
 
       {/* Results preview */}
-      {node.result && <TablePreview result={node.result} maxRows={20} fillAvailableHeight />}
+      {node.result && (
+        <TablePreview
+          result={node.result}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
 
       {/* Row count */}
       {node.result && (

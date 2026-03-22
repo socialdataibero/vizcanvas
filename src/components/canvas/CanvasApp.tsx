@@ -22,8 +22,18 @@ import { AIGraphPlan } from "@/lib/aiGraph";
 import { buildAIPlanLayout } from "@/lib/aiPlanLayout";
 import { buildDeletedPageState, buildDuplicatedPageState } from "@/lib/canvasPages";
 import {
+  buildCenteredDownstreamNodePosition,
+  buildFirstNodeVerticalPosition,
+  buildLaneDownstreamNodePosition,
+  findPreferredAnchorNodeId,
+  findRightmostAnchorNodeId,
+  findAvailableNodePosition,
+} from "@/lib/canvasPlacement";
+import {
   buildFrameBoundsFromNodeRects,
+  getBaseCanvasNodeHeight,
   getCanvasNodeHeight,
+  getCanvasPlacementHeight,
   getCanvasNodeWidth,
   getLiveCanvasNodeRect,
   normalizeFrameMembership,
@@ -199,6 +209,45 @@ export default function CanvasApp() {
     framesRef.current = frames;
   }, [frames]);
 
+  useEffect(() => {
+    const nextPositionUpdates: Record<string, { x: number; y: number }> = {};
+
+    setNodeSizes((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const [nodeId, node] of Object.entries(nodes)) {
+        const minHeight = getBaseCanvasNodeHeight(node.type);
+        const currentSize = prev[nodeId];
+        const currentHeight = currentSize?.height ?? minHeight;
+        if (currentHeight >= minHeight) continue;
+
+        next[nodeId] = {
+          width: currentSize?.width ?? getCanvasNodeWidth(node.type),
+          height: minHeight,
+        };
+
+        const currentPosition = nodePositions[nodeId];
+        if (currentPosition) {
+          nextPositionUpdates[nodeId] = {
+            x: currentPosition.x,
+            y: Math.round(currentPosition.y - (minHeight - currentHeight) / 2),
+          };
+        }
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+
+    if (Object.keys(nextPositionUpdates).length > 0) {
+      setNodePositions((prev) => ({
+        ...prev,
+        ...nextPositionUpdates,
+      }));
+    }
+  }, [nodePositions, nodes]);
+
   const buildCurrentPersistedState = useCallback(() => buildPersistedAppState({
     nodePositions,
     nodeSizes,
@@ -315,10 +364,90 @@ export default function CanvasApp() {
   const handleAddNode = useCallback((type: NodeType, position?: { x: number; y: number }) => {
     const config = getDefaultNodeConfig(type);
     const nodeId = addNode(type, config, currentPageId);
-    const pos = position || { x: 200 + Math.random() * 400, y: 200 + Math.random() * 300 };
+    const pageNodes = Object.entries(nodes).filter(([, node]) => node.pageId === currentPageId);
+    const pageNodeCount = pageNodes.length;
+    const pageVisibleNodes = Object.fromEntries(pageNodes);
+    const anchorNodeId = findPreferredAnchorNodeId({
+      selectedNodeId,
+      visibleNodes: pageVisibleNodes,
+      nodePositions,
+      nodeSizes,
+      getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+    });
+    const anchorNode = anchorNodeId ? nodes[anchorNodeId] : undefined;
+    const anchorNodePosition = anchorNodeId ? nodePositions[anchorNodeId] : undefined;
+    const pos = position || (
+      pageNodeCount === 0 && typeof window !== "undefined"
+        ? buildFirstNodeVerticalPosition({
+            surfaceHeight: window.innerHeight,
+            nodeHeight: getCanvasNodeHeight(type, "", {}),
+          })
+        : anchorNode &&
+            anchorNode.pageId === currentPageId &&
+            anchorNodeId &&
+            anchorNodePosition
+          ? findAvailableNodePosition({
+              type,
+              preferredPosition: buildCenteredDownstreamNodePosition({
+                sourcePosition: anchorNodePosition,
+                sourceSize: {
+                  width: nodeSizes[anchorNodeId]?.width ?? getCanvasNodeWidth(anchorNode.type),
+                  height: nodeSizes[anchorNodeId]?.height ?? getCanvasNodeHeight(anchorNode.type, "", {}),
+                },
+                targetHeight: getCanvasPlacementHeight(type),
+                targetType: type,
+              }),
+              visibleNodes: pageVisibleNodes,
+              nodePositions,
+              nodeSizes,
+              getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+              getNodeHeight: (nodeType) => getCanvasNodeHeight(nodeType as NodeType, "", {}),
+            })
+        : { x: 200 + Math.random() * 400, y: 200 + Math.random() * 300 }
+    );
     setNodePositions((prev) => ({ ...prev, [nodeId]: pos }));
     return nodeId;
-  }, [addNode, currentPageId]);
+  }, [addNode, currentPageId, nodePositions, nodeSizes, nodes, selectedNodeId]);
+
+  const handleAddToolbarNode = useCallback((type: NodeType) => {
+    const pageNodes = Object.entries(nodes).filter(([, node]) => node.pageId === currentPageId);
+    const pageVisibleNodes = Object.fromEntries(pageNodes);
+    const anchorNodeId = findPreferredAnchorNodeId({
+      selectedNodeId,
+      visibleNodes: pageVisibleNodes,
+      nodePositions,
+      nodeSizes,
+      getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+    }) ?? undefined;
+
+    if (!anchorNodeId) {
+      return handleAddNode(type);
+    }
+
+    const anchorNode = nodes[anchorNodeId];
+    const anchorNodePosition = nodePositions[anchorNodeId];
+    if (!anchorNode || anchorNode.pageId !== currentPageId || !anchorNodePosition) {
+      return handleAddNode(type);
+    }
+
+    const preferredPosition = findAvailableNodePosition({
+      type,
+      preferredPosition: buildLaneDownstreamNodePosition({
+        sourcePosition: anchorNodePosition,
+        sourceSize: {
+          width: nodeSizes[anchorNodeId]?.width ?? getCanvasNodeWidth(anchorNode.type),
+          height: nodeSizes[anchorNodeId]?.height ?? getCanvasNodeHeight(anchorNode.type, "", {}),
+        },
+      }),
+      visibleNodes: pageVisibleNodes,
+      nodePositions,
+      nodeSizes,
+      getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+      getNodeHeight: (nodeType) => getCanvasNodeHeight(nodeType as NodeType, "", {}),
+    });
+
+    return handleAddNode(type, preferredPosition);
+  }, [currentPageId, handleAddNode, nodePositions, nodeSizes, nodes, selectedNodeId]);
 
   const handleSelectPage = useCallback((pageId: string) => {
     canvasStoreApi.getState().setCurrentPage(pageId);
@@ -417,11 +546,17 @@ export default function CanvasApp() {
   const handleAddFromNode = useCallback((tableName: string) => {
     const config: FromConfig = { tableName, filters: [] };
     const nodeId = addNode("from", config, currentPageId);
-    const pos = { x: 200 + Math.random() * 400, y: 200 + Math.random() * 300 };
+    const pageNodeCount = Object.values(nodes).filter((node) => node.pageId === currentPageId).length;
+    const pos = pageNodeCount === 0 && typeof window !== "undefined"
+      ? buildFirstNodeVerticalPosition({
+          surfaceHeight: window.innerHeight,
+          nodeHeight: getCanvasNodeHeight("from", "", {}),
+        })
+      : { x: 200 + Math.random() * 400, y: 200 + Math.random() * 300 };
     setNodePositions((prev) => ({ ...prev, [nodeId]: pos }));
     // Execute immediately
     setTimeout(() => dagStoreApi.getState().executeNode(nodeId), 100);
-  }, [addNode, currentPageId]);
+  }, [addNode, currentPageId, nodes]);
 
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
     setNodePositions((prev) => ({ ...prev, [nodeId]: { x, y } }));
@@ -876,7 +1011,7 @@ export default function CanvasApp() {
           {/* Bottom Center - Toolbar */}
           <div className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 pb-4">
             <div className="pointer-events-auto">
-              <Toolbar onAddNode={handleAddNode} />
+              <Toolbar onAddNode={handleAddToolbarNode} />
             </div>
           </div>
 

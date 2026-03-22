@@ -1,6 +1,7 @@
 import { DAGNode, DAGEdge } from "@/engine/types";
 import { CanvasFrame, CanvasPage, VersionSnapshot } from "@/types/canvas";
 import { ColumnInfo } from "@/types/nodes";
+import { getBaseCanvasNodeHeight, getCanvasNodeWidth } from "@/lib/canvasLayout";
 
 export const STORAGE_KEY = "vizcanvas-state";
 export const SNAPSHOTS_STORAGE_KEY = "vizcanvas-snapshots";
@@ -9,6 +10,7 @@ const STORAGE_VERSION = 1;
 export const VIZCANVAS_FILE_EXTENSION = ".vzc";
 const VIZCANVAS_FORMAT = "vizcanvas";
 const VIZCANVAS_VERSION = 1;
+const TABULAR_PREVIEW_NODE_TYPES = new Set(["from", "sql", "group", "join", "table", "distinct", "controls"]);
 
 export interface PersistedAppState {
   version: number;
@@ -55,6 +57,36 @@ function normalizeFrames(frames: CanvasFrame[] | undefined): CanvasFrame[] {
   }));
 }
 
+function normalizeNodeSizes(state: PersistedAppState): PersistedAppState["nodeSizes"] {
+  const nodeSizes = state.nodeSizes ?? {};
+
+  return Object.fromEntries(
+    Object.entries(nodeSizes).map(([nodeId, size]) => {
+      const node = state.dag.nodes[nodeId];
+      if (!node) {
+        return [nodeId, size];
+      }
+
+      const minHeight = getBaseCanvasNodeHeight(node.type);
+      const defaultWidth = getCanvasNodeWidth(node.type);
+      const shouldResetLegacyAutoHeight =
+        TABULAR_PREVIEW_NODE_TYPES.has(node.type) &&
+        size.width === defaultWidth &&
+        size.height > minHeight;
+
+      return [
+        nodeId,
+        {
+          ...size,
+          height: shouldResetLegacyAutoHeight
+            ? minHeight
+            : Math.max(size.height, minHeight),
+        },
+      ];
+    })
+  );
+}
+
 function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
   if (!parsed || typeof parsed !== "object") return null;
 
@@ -65,10 +97,12 @@ function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
   // Version 0 or missing: try to use as-is if it has the expected shape
   if (version === 0 || version === undefined) {
     if ((parsed as Partial<PersistedAppState>).canvas && (parsed as Partial<PersistedAppState>).dag && (parsed as Partial<PersistedAppState>).nodePositions) {
+      const state = parsed as PersistedAppState;
       return {
-        ...(parsed as PersistedAppState),
+        ...state,
         version: STORAGE_VERSION,
-        frames: normalizeFrames((parsed as PersistedAppState).frames),
+        nodeSizes: normalizeNodeSizes(state),
+        frames: normalizeFrames(state.frames),
       };
     }
     return null;
@@ -76,17 +110,21 @@ function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
 
   // Current version
   if (version === STORAGE_VERSION) {
+    const state = parsed as PersistedAppState;
     return {
-      ...(parsed as PersistedAppState),
-      frames: normalizeFrames((parsed as PersistedAppState).frames),
+      ...state,
+      nodeSizes: normalizeNodeSizes(state),
+      frames: normalizeFrames(state.frames),
     };
   }
 
   // Future versions: attempt to load rather than discarding
   console.warn(`[Persistence] Unknown version ${version}, attempting to load`);
+  const state = parsed as PersistedAppState;
   return {
-    ...(parsed as PersistedAppState),
-    frames: normalizeFrames((parsed as PersistedAppState).frames),
+    ...state,
+    nodeSizes: normalizeNodeSizes(state),
+    frames: normalizeFrames(state.frames),
   };
 }
 

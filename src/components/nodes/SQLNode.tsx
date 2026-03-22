@@ -4,13 +4,15 @@ import React, { useState, useEffect } from "react";
 import { DAGNode } from "@/engine/types";
 import { SQLConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function SQLNodeBody({ node }: Props) {
+export default function SQLNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as SQLConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const [query, setQuery] = useState(config.query || "SELECT * FROM input");
@@ -24,7 +26,7 @@ export default function SQLNodeBody({ node }: Props) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 no-drag">
+    <div className={`flex min-h-0 flex-col gap-2 no-drag ${expandTablePreview ? "h-full" : ""}`}>
       {/* SQL Editor */}
       <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">SQL Query</label>
@@ -57,7 +59,13 @@ export default function SQLNodeBody({ node }: Props) {
       </div>
 
       {/* Results preview */}
-      {node.result && <TablePreview result={node.result} maxRows={20} fillAvailableHeight />}
+      {node.result && (
+        <TablePreview
+          result={node.result}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
 
       {node.result && (
         <div className="flex-shrink-0 text-[10px] text-gray-400 text-center">

@@ -14,6 +14,7 @@ import EdgeRenderer from "./EdgeRenderer";
 import { NodeType } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
 import { CONTEXT_MENU_NODE_GROUPS, NODE_SHORTCUTS } from "@/lib/nodeConfig";
+import { getCanvasNodeHeight, getCanvasNodeWidth } from "@/lib/canvasLayout";
 import {
   addNodeWithCollisionAvoidance,
   findAvailableNodePosition,
@@ -31,16 +32,6 @@ import {
   useCanvasTransientState,
 } from "@/hooks/useCanvasTransientState";
 
-const NODE_WIDTH: Record<string, number> = {
-  chart: 460,
-  default: 320,
-};
-
-const NODE_HEIGHT: Partial<Record<string, number>> = {
-  chart: 320,
-};
-
-const DEFAULT_NODE_HEIGHT = 220;
 const MIN_NODE_WIDTH: Partial<Record<string, number>> = {
   chart: 380,
 };
@@ -48,11 +39,11 @@ const DEFAULT_MIN_NODE_WIDTH = 260;
 const MIN_NODE_HEIGHT = 140;
 
 function getNodeWidth(type: string): number {
-  return NODE_WIDTH[type] ?? NODE_WIDTH.default;
+  return getCanvasNodeWidth(type as NodeType);
 }
 
 function getNodeHeight(type: string): number {
-  return NODE_HEIGHT[type] ?? DEFAULT_NODE_HEIGHT;
+  return getCanvasNodeHeight(type as NodeType, "", {});
 }
 
 function getMinNodeWidth(type: string): number {

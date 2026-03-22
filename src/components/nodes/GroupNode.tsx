@@ -5,11 +5,13 @@ import { LuSigma } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { GroupConfig, AggregationConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
+import { INITIAL_TABLE_VISIBLE_ROWS } from "@/lib/canvasLayout";
 import TablePreview from "./shared/TablePreview";
 import NodeInfoTooltip from "./shared/NodeInfoTooltip";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
 const EMPTY_COLUMNS: { name: string; type: string }[] = [];
@@ -24,7 +26,7 @@ function requiresNumericColumn(fn?: AggregationConfig["function"]): boolean {
   return Boolean(fn && fn !== "COUNT");
 }
 
-export default function GroupNodeBody({ node }: Props) {
+export default function GroupNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as GroupConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const executeDirty = useDagStore((s) => s.executeDirty);
@@ -143,8 +145,8 @@ export default function GroupNodeBody({ node }: Props) {
   }
 
   return (
-    <div className="space-y-3 no-drag">
-      <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-2">
+    <div className={`flex min-h-0 flex-col gap-3 no-drag ${expandTablePreview ? "h-full" : ""}`}>
+      <div className="flex-shrink-0 rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">1</span>
@@ -178,7 +180,7 @@ export default function GroupNodeBody({ node }: Props) {
         )}
       </div>
 
-      <div className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2">
+      <div className="flex-shrink-0 rounded-lg border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-fuchsia-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">2</span>
@@ -246,7 +248,7 @@ export default function GroupNodeBody({ node }: Props) {
         </button>
       </div>
 
-      <div className="text-[10px] text-gray-400">
+      <div className="flex-shrink-0 text-[10px] text-gray-400">
         {!hasOperation
           ? hasPartialAggregation
             ? "Complete the summary to apply it. Showing input rows."
@@ -260,7 +262,13 @@ export default function GroupNodeBody({ node }: Props) {
               : "Ready."}
       </div>
 
-      {previewResult && <TablePreview result={previewResult} maxRows={20} />}
+      {previewResult && (
+        <TablePreview
+          result={previewResult}
+          maxRows={expandTablePreview ? 20 : INITIAL_TABLE_VISIBLE_ROWS}
+          fillAvailableHeight={expandTablePreview}
+        />
+      )}
     </div>
   );
 }

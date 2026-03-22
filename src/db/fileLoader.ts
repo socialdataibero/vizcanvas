@@ -1,8 +1,11 @@
 import { loadFile, getTableSchema, getTables } from "./duckdb";
 import { DataTable } from "@/types/data";
 
-async function getUniqueTableName(baseName: string): Promise<string> {
-  const existing = await getTables();
+export function resolveUploadedTableName(baseName: string, existing: string[]): string {
+  if (baseName === "sample_data") {
+    return "sample_data";
+  }
+
   let name = baseName;
   let suffix = 1;
   while (existing.includes(name)) {
@@ -10,6 +13,10 @@ async function getUniqueTableName(baseName: string): Promise<string> {
     suffix++;
   }
   return name;
+}
+
+async function getUniqueTableName(baseName: string): Promise<string> {
+  return resolveUploadedTableName(baseName, await getTables());
 }
 
 export async function loadDataFile(file: File): Promise<DataTable> {

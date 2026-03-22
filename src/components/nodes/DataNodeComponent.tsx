@@ -3,6 +3,8 @@
 import React, { useState, useCallback } from "react";
 import { DAGNode } from "@/engine/types";
 import { ResizeDirection } from "@/lib/canvasInteractionTypes";
+import { getCanvasNodeHeight } from "@/lib/canvasLayout";
+import { buildCenteredDownstreamNodePosition } from "@/lib/canvasPlacement";
 import { ChartConfig, ControlsConfig, FromConfig, GroupConfig, NodeType } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
 import NodeShell from "./shared/NodeShell";
@@ -20,7 +22,7 @@ import PresentationNodeBody from "./PresentationNodeBody";
 interface Props {
   node: DAGNode;
   position: { x: number; y: number };
-  size: { width: number; height?: number };
+  size: { width: number; height?: number; minHeight?: number };
   isSelected: boolean;
   presentationMode?: boolean;
   onDragStart: (e: React.MouseEvent) => void;
@@ -33,17 +35,17 @@ interface Props {
   onAddDownstreamNode?: (type: NodeType, preferredPosition?: { x: number; y: number }) => string;
 }
 
-function getNodeBody(node: DAGNode, presentationMode = false) {
+function getNodeBody(node: DAGNode, presentationMode = false, expandTablePreview = false) {
   switch (node.type) {
-    case "from": return presentationMode ? <PresentationNodeBody node={node} /> : <FromNodeBody node={node} />;
-    case "sql": return presentationMode ? <PresentationNodeBody node={node} /> : <SQLNodeBody node={node} />;
-    case "group": return presentationMode ? <PresentationNodeBody node={node} /> : <GroupNodeBody node={node} />;
-    case "join": return presentationMode ? <PresentationNodeBody node={node} /> : <JoinNodeBody node={node} />;
+    case "from": return presentationMode ? <PresentationNodeBody node={node} /> : <FromNodeBody node={node} expandTablePreview={expandTablePreview} />;
+    case "sql": return presentationMode ? <PresentationNodeBody node={node} /> : <SQLNodeBody node={node} expandTablePreview={expandTablePreview} />;
+    case "group": return presentationMode ? <PresentationNodeBody node={node} /> : <GroupNodeBody node={node} expandTablePreview={expandTablePreview} />;
+    case "join": return presentationMode ? <PresentationNodeBody node={node} /> : <JoinNodeBody node={node} expandTablePreview={expandTablePreview} />;
     case "chart": return <ChartNodeBody node={node} presentationMode={presentationMode} />;
-    case "table": return presentationMode ? <PresentationNodeBody node={node} /> : <TableNodeBody node={node} />;
-    case "distinct": return presentationMode ? <PresentationNodeBody node={node} /> : <DistinctNodeBody node={node} />;
+    case "table": return presentationMode ? <PresentationNodeBody node={node} /> : <TableNodeBody node={node} expandTablePreview={expandTablePreview} />;
+    case "distinct": return presentationMode ? <PresentationNodeBody node={node} /> : <DistinctNodeBody node={node} expandTablePreview={expandTablePreview} />;
     case "javascript": return presentationMode ? <PresentationNodeBody node={node} /> : <JSNodeBody node={node} />;
-    case "controls": return presentationMode ? <PresentationNodeBody node={node} /> : <ControlsNodeBody node={node} />;
+    case "controls": return presentationMode ? <PresentationNodeBody node={node} /> : <ControlsNodeBody node={node} expandTablePreview={expandTablePreview} />;
     default: return <div className="text-xs text-gray-400">Unknown node type</div>;
   }
 }
@@ -128,23 +130,31 @@ export default function DataNodeComponent({
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const addEdge = useDagStore((s) => s.addEdge);
+  const expandsTablePreview = Boolean(
+    size.height !== undefined &&
+    size.minHeight !== undefined &&
+    size.height > size.minHeight
+  );
 
   const showInputPort = node.type !== "from";
   const showOutputPort = node.type !== "javascript";
 
   const handleAddDownstream = useCallback((type: NodeType) => {
     if (!onAddDownstreamNode) return;
-    const sourceHeight = size.height ?? 220;
-    const targetHeight = type === "chart" ? 320 : 220;
-    const preferredPosition = {
-      x: position.x + size.width + 96,
-      y: Math.round(position.y + sourceHeight / 2 - targetHeight / 2),
-    };
+    const preferredPosition = buildCenteredDownstreamNodePosition({
+      sourcePosition: position,
+      sourceSize: {
+        width: size.width,
+        height: size.height ?? size.minHeight ?? getCanvasNodeHeight(node.type, node.id, {}),
+      },
+      targetHeight: getCanvasNodeHeight(type, "", {}),
+      targetType: type,
+    });
     const newNodeId = onAddDownstreamNode(type, preferredPosition);
     if (newNodeId && type !== "from") {
       setTimeout(() => addEdge(node.id, newNodeId), 50);
     }
-  }, [onAddDownstreamNode, node.id, addEdge, position.x, position.y, size.height, size.width]);
+  }, [onAddDownstreamNode, node.id, node.type, addEdge, position, size.height, size.width]);
 
   return (
     <div
@@ -155,6 +165,7 @@ export default function DataNodeComponent({
         zIndex: presentationMode ? 20 : isSelected ? 100 : 10,
         width: size.width,
         height: size.height,
+        minHeight: size.minHeight,
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -183,7 +194,7 @@ export default function DataNodeComponent({
         onResizeStart={presentationMode ? undefined : onResizeStart}
         fillParent={Boolean(size.height)}
       >
-        {getNodeBody(node, presentationMode)}
+        {getNodeBody(node, presentationMode, expandsTablePreview)}
       </NodeShell>
     </div>
   );

@@ -46,7 +46,7 @@ export default function Toolbar({ onAddNode }: Props) {
             {group.items.map(({ type, icon: Icon, label, shortcut }) => (
               <button
                 key={type}
-                onClick={() => onAddNode(type, { x: 400 + Math.random() * 200, y: 300 + Math.random() * 200 })}
+                onClick={() => onAddNode(type)}
                 className="toolbar-btn group relative"
                 title={`${label}${shortcut ? ` (${shortcut})` : ""}`}
               >
