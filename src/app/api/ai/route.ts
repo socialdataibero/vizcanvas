@@ -79,7 +79,7 @@ const canvasGraphTool: Tool = {
                 "sql {query, autoRun}; " +
                 "group {groupByColumns, aggregations:[{column,function,alias}]}; " +
                 "join {joinType,leftColumn,rightColumn}; " +
-                "chart {chartType,xColumn,yColumn,colorColumn,sizeColumn,facetColumn}; " +
+                "chart {chartType,xColumn,yColumn,x2Column,y2Column,colorColumn,sizeColumn,lengthColumn,labelColumn,facetColumn}; " +
                 "table {hiddenColumns,sortColumn,sortDirection}; " +
                 "distinct {columns}; " +
                 "controls {controls:[{type,column,label,value,min,max,options}]}; " +
@@ -136,7 +136,7 @@ Rules for graph planning:
 - When the user asks for a chart by category/dimension and value/measure, prefer creating a complete flow with both the transformation node and the chart node.
 - Prefer "sql" for custom calculations, filters, renames, CASE logic, CTEs, or complex transformations.
 - Use "table" when a preview table would help.
-- Use "chart" for visualization and choose one supported chartType: bar, barX, barY, line, area, scatter, dot, histogram, pie, heatmap, box.
+- Use "chart" for visualization and choose one supported chartType: bar, barX, barY, line, area, scatter, dot, histogram, pie, heatmap, box, stackedBar, waffle, waterfall, treemap, grid, link, choropleth, geoPoint, spike, arc, sankey.
 - Use "join" only when two upstream inputs are needed.
 - Use "controls" only for interactive filtering controls.
 - Use "javascript" only when the user explicitly asks for JavaScript logic.

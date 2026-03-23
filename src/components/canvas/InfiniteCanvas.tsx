@@ -349,6 +349,7 @@ export default function InfiniteCanvas({
     closeMenus,
     visibleNodes,
     nodes,
+    edges,
     nodePositions,
     nodeSizes,
     selectedNodeIds,
@@ -530,6 +531,7 @@ export default function InfiniteCanvas({
       <CanvasSurface pan={pan} zoom={zoom}>
         <EdgeRenderer
           edges={visibleEdges}
+          nodes={nodes}
           nodePositions={nodePositions}
           connectingFrom={connectingFrom}
           connectingMouse={connectingMouse}

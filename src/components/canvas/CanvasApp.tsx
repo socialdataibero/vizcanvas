@@ -14,7 +14,7 @@ import TitleCard from "@/components/panels/TitleCard";
 import AIPanel from "@/components/panels/AIPanel";
 import PageTabs from "@/components/panels/PageTabs";
 import ShortcutsModal from "@/components/ui/ShortcutsModal";
-import { NodeType, FromConfig, ColumnInfo, GroupConfig, ChartConfig, AggregationConfig } from "@/types/nodes";
+import { NodeType, FromConfig, ColumnInfo, GroupConfig, ChartConfig, AggregationConfig, JoinConfig } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
 import { DataTable } from "@/types/data";
 import { DAGEdge, DAGNode } from "@/engine/types";
@@ -44,8 +44,10 @@ import {
   parsePersistedAppState,
   readPersistedAppState,
   PersistedAppState,
+  readPersistedUploadedTables,
   writePersistedAppState,
 } from "@/lib/persistence";
+import { SuggestedMapFlow, applyColumnSemanticsToColumns, getSuggestedMapFlows } from "@/lib/columnSemantics";
 import { getNodeTypeLabel } from "@/lib/utils";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useCanvasHistory } from "@/hooks/useCanvasHistory";
@@ -84,7 +86,12 @@ function isTemporalColumn(column: ColumnInfo): boolean {
   return /date|time|timestamp/i.test(column.type);
 }
 
+function isSpatialColumn(column: ColumnInfo): boolean {
+  return column.role === "geometry" || column.role === "latitude" || column.role === "longitude";
+}
+
 function isCategoricalColumn(column: ColumnInfo): boolean {
+  if (isSpatialColumn(column)) return false;
   return /char|text|string|uuid/i.test(column.type) || isTemporalColumn(column);
 }
 
@@ -98,8 +105,34 @@ function chooseGroupByColumn(columns: ColumnInfo[]): string | undefined {
 
 function chooseMetricColumn(columns: ColumnInfo[], excludedColumns: string[]): ColumnInfo | undefined {
   return (
-    columns.find((column) => !excludedColumns.includes(column.name) && isNumericColumn(column)) ??
-    columns.find((column) => !excludedColumns.includes(column.name))
+    columns.find((column) => !excludedColumns.includes(column.name) && !isSpatialColumn(column) && isNumericColumn(column)) ??
+    columns.find((column) => !excludedColumns.includes(column.name) && !isSpatialColumn(column))
+  );
+}
+
+function chooseMapLabelColumn(columns: ColumnInfo[], excludedColumns: string[]): ColumnInfo | undefined {
+  return (
+    columns.find((column) =>
+      !excludedColumns.includes(column.name) &&
+      !isSpatialColumn(column) &&
+      !isNumericColumn(column) &&
+      /name|nom|label|region|state|country|province|geo/i.test(column.name)
+    ) ??
+    columns.find((column) =>
+      !excludedColumns.includes(column.name) &&
+      !isSpatialColumn(column) &&
+      !isNumericColumn(column) &&
+      column.role === "join_key"
+    ) ??
+    columns.find((column) =>
+      !excludedColumns.includes(column.name) &&
+      !isSpatialColumn(column) &&
+      isCategoricalColumn(column)
+    ) ??
+    columns.find((column) =>
+      !excludedColumns.includes(column.name) &&
+      !isSpatialColumn(column)
+    )
   );
 }
 
@@ -558,6 +591,160 @@ export default function CanvasApp() {
     setTimeout(() => dagStoreApi.getState().executeNode(nodeId), 100);
   }, [addNode, currentPageId, nodes]);
 
+  const handleCreateMapFlow = useCallback((tableName: string, selectedSuggestion?: SuggestedMapFlow) => {
+    const persistedRowsByTable = new Map(
+      readPersistedUploadedTables().map((table) => [table.name, table.rows] as const)
+    );
+    const tablesWithRows = tables.map((table) => ({
+      ...table,
+      columns: applyColumnSemanticsToColumns(table.columns),
+      rows: persistedRowsByTable.get(table.name),
+    }));
+    const suggestion =
+      selectedSuggestion &&
+      (selectedSuggestion.geoTableName === tableName || selectedSuggestion.dataTableName === tableName)
+        ? selectedSuggestion
+        : getSuggestedMapFlows(tablesWithRows, tableName)[0];
+
+    if (!suggestion) {
+      window.alert("No pude inferir automáticamente un mapa para esta tabla. Necesito una tabla geográfica y otra tabular con una llave común.");
+      return;
+    }
+
+    const geoTable = tablesWithRows.find((table) => table.name === suggestion.geoTableName);
+    const dataTable = tablesWithRows.find((table) => table.name === suggestion.dataTableName);
+    if (!geoTable || !dataTable) {
+      window.alert("No pude resolver las tablas necesarias para crear el flujo de mapa.");
+      return;
+    }
+
+    const joinColumns = [suggestion.join.leftColumn, suggestion.join.rightColumn];
+    const labelColumn =
+      chooseMapLabelColumn(geoTable.columns, [suggestion.join.leftColumn])?.name ??
+      suggestion.join.leftColumn;
+    const valueColumn = chooseMetricColumn(dataTable.columns, [suggestion.join.rightColumn])?.name;
+
+    if (!valueColumn) {
+      window.alert("No encontré una columna numérica para colorear el mapa en la tabla tabular.");
+      return;
+    }
+
+    const pageNodes = Object.entries(nodes).filter(([, node]) => node.pageId === currentPageId);
+    const visibleNodes = Object.fromEntries(pageNodes);
+    const rightmostAnchorNodeId = findRightmostAnchorNodeId({
+      visibleNodes,
+      nodePositions,
+      nodeSizes,
+      getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+    });
+    const anchorNodeId = rightmostAnchorNodeId ?? undefined;
+    const anchorNode = anchorNodeId ? nodes[anchorNodeId] : undefined;
+    const anchorPosition = anchorNodeId ? nodePositions[anchorNodeId] : undefined;
+    const anchorWidth =
+      anchorNodeId && anchorNode
+        ? nodeSizes[anchorNodeId]?.width ?? getCanvasNodeWidth(anchorNode.type)
+        : 0;
+    const basePosition = !anchorNode || !anchorPosition
+      ? buildFirstNodeVerticalPosition({
+          surfaceHeight: typeof window !== "undefined" ? window.innerHeight : 900,
+          nodeHeight: getCanvasNodeHeight("join", "", {}),
+        })
+      : {
+          x: anchorPosition.x + anchorWidth + 180,
+          y: anchorPosition.y + 20,
+        };
+
+    const draftNodes: Record<string, DAGNode> = { ...visibleNodes };
+    const draftPositions = { ...nodePositions };
+    const draftSizes = { ...nodeSizes };
+    let draftIndex = 0;
+
+    const reservePosition = (type: NodeType, preferredPosition: { x: number; y: number }) => {
+      const position = findAvailableNodePosition({
+        type,
+        preferredPosition,
+        visibleNodes: draftNodes,
+        nodePositions: draftPositions,
+        nodeSizes: draftSizes,
+        getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
+        getNodeHeight: (nodeType) => getCanvasNodeHeight(nodeType as NodeType, "", {}),
+      });
+
+      const draftNodeId = `draft-map-${draftIndex++}`;
+      draftNodes[draftNodeId] = {
+        id: draftNodeId,
+        type,
+        config: getDefaultNodeConfig(type),
+        inputIds: [],
+        result: null,
+        status: "idle",
+        pageId: currentPageId,
+      };
+      draftPositions[draftNodeId] = position;
+      draftSizes[draftNodeId] = {
+        width: getCanvasNodeWidth(type),
+        height: getCanvasNodeHeight(type, "", {}),
+      };
+
+      return position;
+    };
+
+    const geoPosition = reservePosition("from", {
+      x: basePosition.x - 60,
+      y: basePosition.y - 170,
+    });
+    const dataPosition = reservePosition("from", {
+      x: basePosition.x - 60,
+      y: basePosition.y + 150,
+    });
+    const joinPosition = reservePosition("join", {
+      x: basePosition.x + 360,
+      y: basePosition.y - 10,
+    });
+    const chartPosition = reservePosition("chart", {
+      x: basePosition.x + 770,
+      y: basePosition.y - 10,
+    });
+
+    const geoSourceId = addNode("from", { tableName: geoTable.name, filters: [] } as FromConfig, currentPageId);
+    const dataSourceId = addNode("from", { tableName: dataTable.name, filters: [] } as FromConfig, currentPageId);
+    const joinId = addNode("join", {
+      joinType: "LEFT",
+      leftColumn: suggestion.join.leftColumn,
+      rightColumn: suggestion.join.rightColumn,
+    } as JoinConfig, currentPageId);
+    const chartId = addNode("chart", {
+      chartType: "choropleth",
+      chartCatalogId: "world-choropleth",
+      xColumn: labelColumn,
+      yColumn: valueColumn,
+    } as ChartConfig, currentPageId);
+
+    setNodePositions((prev) => ({
+      ...prev,
+      [geoSourceId]: geoPosition,
+      [dataSourceId]: dataPosition,
+      [joinId]: joinPosition,
+      [chartId]: chartPosition,
+    }));
+
+    setTimeout(() => {
+      dagStoreApi.getState().addEdge(geoSourceId, joinId, 0);
+      dagStoreApi.getState().addEdge(dataSourceId, joinId, 1);
+      dagStoreApi.getState().addEdge(joinId, chartId, 0);
+      setSelectedNode(chartId);
+      void dagStoreApi.getState().executeAll();
+    }, 80);
+
+    console.info("[Map Flow]", {
+      geoTable: geoTable.name,
+      dataTable: dataTable.name,
+      joinColumns,
+      labelColumn,
+      valueColumn,
+    });
+  }, [addNode, currentPageId, nodePositions, nodeSizes, nodes, setSelectedNode, tables]);
+
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
     setNodePositions((prev) => ({ ...prev, [nodeId]: { x, y } }));
   }, []);
@@ -994,7 +1181,7 @@ export default function CanvasApp() {
             </div>
             {dataPanelOpen && (
               <div className="pointer-events-auto">
-                <DataPanel onAddFromNode={handleAddFromNode} />
+                <DataPanel onAddFromNode={handleAddFromNode} onCreateMapFlow={handleCreateMapFlow} />
               </div>
             )}
           </div>

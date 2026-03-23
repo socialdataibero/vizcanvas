@@ -3,6 +3,7 @@ import {
   buildCenteredDownstreamNodePosition,
   buildFirstNodeVerticalPosition,
   buildLaneDownstreamNodePosition,
+  buildPortAlignedDownstreamNodePosition,
   findPreferredAnchorNodeId,
   findRightmostAnchorNodeId,
 } from "@/lib/canvasPlacement";
@@ -73,6 +74,21 @@ describe("buildLaneDownstreamNodePosition", () => {
     ).toEqual({
       x: 996,
       y: 268,
+    });
+  });
+});
+
+describe("buildPortAlignedDownstreamNodePosition", () => {
+  it("aligns downstream ports on the same horizontal axis for add-from-node actions", () => {
+    expect(
+      buildPortAlignedDownstreamNodePosition({
+        sourcePosition: { x: 220, y: 240 },
+        sourceSize: { width: 320, height: 405 },
+        targetHeight: 769,
+      })
+    ).toEqual({
+      x: 636,
+      y: 58,
     });
   });
 });

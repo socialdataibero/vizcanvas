@@ -65,5 +65,5 @@ export function getFileExtension(filename: string): string {
 
 export function isSupported(filename: string): boolean {
   const ext = getFileExtension(filename);
-  return ["csv", "tsv", "parquet", "json", "jsonl"].includes(ext);
+  return ["csv", "tsv", "parquet", "json", "jsonl", "geojson", "topojson"].includes(ext);
 }

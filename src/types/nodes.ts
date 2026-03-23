@@ -13,6 +13,7 @@ export interface ColumnInfo {
   name: string;
   type: string; // DuckDB type string
   nullable: boolean;
+  role?: "geometry" | "latitude" | "longitude" | "join_key";
 }
 
 export interface TableSchema {
@@ -60,6 +61,8 @@ export interface JoinConfig {
   joinType: "INNER" | "LEFT" | "RIGHT" | "FULL";
   leftColumn: string;
   rightColumn: string;
+  configVersion?: number;
+  lastRunVersion?: number;
 }
 
 export interface ChartConfig {
@@ -67,8 +70,12 @@ export interface ChartConfig {
   chartCatalogId?: string;
   xColumn?: string;
   yColumn?: string;
+  x2Column?: string;
+  y2Column?: string;
   colorColumn?: string;
   sizeColumn?: string;
+  lengthColumn?: string;
+  labelColumn?: string;
   facetColumn?: string;
   title?: string;
   caption?: string;
@@ -86,7 +93,18 @@ export type ChartType =
   | "box"
   | "dot"
   | "barY"
-  | "barX";
+  | "barX"
+  | "stackedBar"
+  | "waffle"
+  | "waterfall"
+  | "treemap"
+  | "grid"
+  | "link"
+  | "choropleth"
+  | "geoPoint"
+  | "spike"
+  | "arc"
+  | "sankey";
 
 export interface BrushSelection {
   x?: [number, number];

@@ -47,6 +47,13 @@ interface BuildCenteredDownstreamNodePositionParams {
   gapX?: number;
 }
 
+interface BuildPortAlignedDownstreamNodePositionParams {
+  sourcePosition: NodePosition;
+  sourceSize: NodeSize;
+  targetHeight: number;
+  gapX?: number;
+}
+
 interface BuildLaneDownstreamNodePositionParams {
   sourcePosition: NodePosition;
   sourceSize: NodeSize;
@@ -117,6 +124,18 @@ export function buildCenteredDownstreamNodePosition({
   return {
     x: sourcePosition.x + sourceSize.width + gapX,
     y: Math.max(minY, Math.min(maxY, idealY)),
+  };
+}
+
+export function buildPortAlignedDownstreamNodePosition({
+  sourcePosition,
+  sourceSize,
+  targetHeight,
+  gapX = DOWNSTREAM_NODE_GAP_X,
+}: BuildPortAlignedDownstreamNodePositionParams): NodePosition {
+  return {
+    x: sourcePosition.x + sourceSize.width + gapX,
+    y: Math.round(sourcePosition.y + sourceSize.height / 2 - targetHeight / 2),
   };
 }
 

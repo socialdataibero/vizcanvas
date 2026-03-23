@@ -4,7 +4,8 @@ import React, { useState, useCallback } from "react";
 import { DAGNode } from "@/engine/types";
 import { ResizeDirection } from "@/lib/canvasInteractionTypes";
 import { getCanvasNodeHeight } from "@/lib/canvasLayout";
-import { buildCenteredDownstreamNodePosition } from "@/lib/canvasPlacement";
+import { getInputPortCount } from "@/lib/inputPorts";
+import { buildPortAlignedDownstreamNodePosition } from "@/lib/canvasPlacement";
 import { ChartConfig, ControlsConfig, FromConfig, GroupConfig, NodeType } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
 import NodeShell from "./shared/NodeShell";
@@ -138,17 +139,17 @@ export default function DataNodeComponent({
 
   const showInputPort = node.type !== "from";
   const showOutputPort = node.type !== "javascript";
+  const inputPortCount = showInputPort ? getInputPortCount(node.type) : 0;
 
   const handleAddDownstream = useCallback((type: NodeType) => {
     if (!onAddDownstreamNode) return;
-    const preferredPosition = buildCenteredDownstreamNodePosition({
+    const preferredPosition = buildPortAlignedDownstreamNodePosition({
       sourcePosition: position,
       sourceSize: {
         width: size.width,
         height: size.height ?? size.minHeight ?? getCanvasNodeHeight(node.type, node.id, {}),
       },
       targetHeight: getCanvasNodeHeight(type, "", {}),
-      targetType: type,
     });
     const newNodeId = onAddDownstreamNode(type, preferredPosition);
     if (newNodeId && type !== "from") {
@@ -188,6 +189,7 @@ export default function DataNodeComponent({
         onDuplicate={onDuplicateNode ? () => onDuplicateNode(node.id) : undefined}
         onAddDownstream={presentationMode ? undefined : onAddDownstreamNode ? handleAddDownstream : undefined}
         showInputPort={presentationMode ? false : showInputPort}
+        inputPortCount={presentationMode ? 0 : inputPortCount}
         showOutputPort={presentationMode ? false : showOutputPort}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, type MutableRefObject, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
-import { DAGNode } from "@/engine/types";
+import { DAGEdge, DAGNode } from "@/engine/types";
 import { computeDraggedPosition } from "@/lib/canvasDrag";
+import { resolveTargetInputIndex } from "@/lib/inputPorts";
 import { computeResizedNodeGeometry } from "@/lib/canvasResize";
 import {
   resolveMarqueeSelection,
@@ -24,6 +25,7 @@ interface UseCanvasPointerHandlersParams {
   closeMenus: () => void;
   visibleNodes: Record<string, DAGNode>;
   nodes: Record<string, DAGNode>;
+  edges: DAGEdge[];
   marqueeStart: CanvasPoint | null;
   setMarqueeStart: (point: CanvasPoint | null) => void;
   marqueeCurrent: CanvasPoint | null;
@@ -61,7 +63,7 @@ interface UseCanvasPointerHandlersParams {
     b: { x: number; y: number; width: number; height: number },
     padding?: number
   ) => boolean;
-  addEdge: (fromNodeId: string, toNodeId: string) => unknown;
+  addEdge: (fromNodeId: string, toNodeId: string, toInputIndex?: number) => unknown;
   onMoveFrame: (frameId: string, x: number, y: number) => void;
   onNodeMove: (nodeId: string, x: number, y: number) => void;
   onNodeResize: (
@@ -79,6 +81,7 @@ export function useCanvasPointerHandlers({
   closeMenus,
   visibleNodes,
   nodes,
+  edges,
   marqueeStart,
   setMarqueeStart,
   marqueeCurrent,
@@ -147,16 +150,27 @@ export function useCanvasPointerHandlers({
     if (!connectingFrom) return;
 
     const target = document.elementFromPoint(screenX, screenY);
+    const inputPort = target?.closest(".port.input") as HTMLElement | null;
     const nodeEl = target?.closest("[data-node-id]");
     if (nodeEl) {
       const targetNodeId = nodeEl.getAttribute("data-node-id");
       if (targetNodeId && targetNodeId !== connectingFrom) {
-        addEdge(connectingFrom, targetNodeId);
+        const targetNodeType = nodes[targetNodeId]?.type ?? "table";
+        const explicitInputIndex = inputPort ? Number(inputPort.dataset.inputIndex ?? 0) : undefined;
+        const toInputIndex = resolveTargetInputIndex({
+          targetNodeId,
+          targetNodeType,
+          edges,
+          explicitInputIndex: Number.isFinite(explicitInputIndex) ? explicitInputIndex : undefined,
+          dropClientY: screenY,
+          targetRect: nodeEl.getBoundingClientRect(),
+        });
+        addEdge(connectingFrom, targetNodeId, toInputIndex);
       }
     }
 
     setConnectingFrom(null);
-  }, [addEdge, connectingFrom, setConnectingFrom]);
+  }, [addEdge, connectingFrom, edges, nodes, setConnectingFrom]);
 
   const handleMouseDown = useCallback((e: ReactMouseEvent) => {
     const target = e.target as HTMLElement;

@@ -2,9 +2,11 @@
 
 import React, { useLayoutEffect, useState } from "react";
 import { DAGEdge } from "@/engine/types";
+import { getInputPortOffsetPercent } from "@/lib/inputPorts";
 
 interface Props {
   edges: DAGEdge[];
+  nodes: Record<string, { type: string }>;
   nodePositions: Record<string, { x: number; y: number }>;
   connectingFrom: string | null;
   connectingMouse: { x: number; y: number };
@@ -16,11 +18,11 @@ const NODE_WIDTH = 300;
 const NODE_HEIGHT = 60;
 
 interface NodeAnchorMetrics {
-  input: { x: number; y: number };
+  inputs: Array<{ x: number; y: number }>;
   output: { x: number; y: number };
 }
 
-export default function EdgeRenderer({ edges, nodePositions, connectingFrom, connectingMouse, pan, zoom }: Props) {
+export default function EdgeRenderer({ edges, nodes, nodePositions, connectingFrom, connectingMouse, pan, zoom }: Props) {
   const [nodeAnchors, setNodeAnchors] = useState<Record<string, NodeAnchorMetrics>>({});
 
   useLayoutEffect(() => {
@@ -39,26 +41,33 @@ export default function EdgeRenderer({ edges, nodePositions, connectingFrom, con
         const nodeElement = document.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement | null;
         if (!nodeElement) continue;
 
-        const inputPort = nodeElement.querySelector(".port.input") as HTMLElement | null;
+        const inputPorts = Array.from(nodeElement.querySelectorAll(".port.input")) as HTMLElement[];
         const outputPort = nodeElement.querySelector(".port.output") as HTMLElement | null;
-        const width = nodeElement.offsetWidth || NODE_WIDTH;
-        const height = nodeElement.offsetHeight || NODE_HEIGHT;
         const nodeRect = nodeElement.getBoundingClientRect();
         const defaultInputX = (nodeRect.left - surfaceRect.left) / zoom;
         const defaultOutputX = (nodeRect.right - surfaceRect.left) / zoom;
         const defaultCenterY = (nodeRect.top + nodeRect.height / 2 - surfaceRect.top) / zoom;
-        const inputRect = inputPort?.getBoundingClientRect();
         const outputRect = outputPort?.getBoundingClientRect();
+        const sortedInputPorts = inputPorts.sort((left, right) => {
+          const leftIndex = Number(left.dataset.inputIndex ?? 0);
+          const rightIndex = Number(right.dataset.inputIndex ?? 0);
+          return leftIndex - rightIndex;
+        });
+        const inputs = sortedInputPorts.length > 0
+          ? sortedInputPorts.map((inputPort) => {
+              const inputRect = inputPort.getBoundingClientRect();
+              return {
+                x: (inputRect.left + inputRect.width / 2 - surfaceRect.left) / zoom,
+                y: (inputRect.top + inputRect.height / 2 - surfaceRect.top) / zoom,
+              };
+            })
+          : [{
+              x: defaultInputX,
+              y: defaultCenterY,
+            }];
 
         nextAnchors[nodeId] = {
-          input: {
-            x: inputRect
-              ? (inputRect.left + inputRect.width / 2 - surfaceRect.left) / zoom
-              : defaultInputX,
-            y: inputRect
-              ? (inputRect.top + inputRect.height / 2 - surfaceRect.top) / zoom
-              : defaultCenterY,
-          },
+          inputs,
           output: {
             x: outputRect
               ? (outputRect.left + outputRect.width / 2 - surfaceRect.left) / zoom
@@ -81,8 +90,11 @@ export default function EdgeRenderer({ edges, nodePositions, connectingFrom, con
             const nextAnchor = nextAnchors[nodeId];
             return (
               prevAnchor &&
-              prevAnchor.input.x === nextAnchor.input.x &&
-              prevAnchor.input.y === nextAnchor.input.y &&
+              prevAnchor.inputs.length === nextAnchor.inputs.length &&
+              prevAnchor.inputs.every((input, index) =>
+                input.x === nextAnchor.inputs[index]?.x &&
+                input.y === nextAnchor.inputs[index]?.y
+              ) &&
               prevAnchor.output.x === nextAnchor.output.x &&
               prevAnchor.output.y === nextAnchor.output.y
             );
@@ -118,18 +130,24 @@ export default function EdgeRenderer({ edges, nodePositions, connectingFrom, con
     };
   }, [edges, nodePositions, connectingFrom, zoom]);
 
-  const getNodeAnchor = (nodeId: string, side: "left" | "right") => {
+  const getNodeAnchor = (nodeId: string, side: "left" | "right", inputIndex = 0) => {
     const anchor = nodeAnchors[nodeId];
     if (anchor) {
-      return side === "right" ? anchor.output : anchor.input;
+      if (side === "right") return anchor.output;
+      return anchor.inputs[inputIndex] ?? anchor.inputs[0] ?? anchor.output;
     }
 
     const pos = nodePositions[nodeId];
     if (!pos) return { x: 0, y: 0 };
 
+    const fallbackNodeType = nodes[nodeId]?.type;
+    const fallbackInputCount = fallbackNodeType === "join" ? 2 : 1;
+    const fallbackInputY =
+      pos.y + (NODE_HEIGHT * getInputPortOffsetPercent(fallbackInputCount, inputIndex)) / 100;
+
     return {
       x: side === "right" ? pos.x + NODE_WIDTH : pos.x,
-      y: pos.y + NODE_HEIGHT / 2,
+      y: side === "right" ? pos.y + NODE_HEIGHT / 2 : fallbackInputY,
     };
   };
 
@@ -165,7 +183,7 @@ export default function EdgeRenderer({ edges, nodePositions, connectingFrom, con
       {/* Existing edges */}
       {edges.map((edge) => {
         const from = getNodeAnchor(edge.fromNodeId, "right");
-        const to = getNodeAnchor(edge.toNodeId, "left");
+        const to = getNodeAnchor(edge.toNodeId, "left", edge.toInputIndex);
         return (
           <g key={edge.id}>
             <path

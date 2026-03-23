@@ -8,6 +8,7 @@ import { buildNodeOptionsMenuItems } from "@/lib/contextMenuActions";
 import { getMenuTitle } from "@/lib/contextMenuLabels";
 import { CONTEXT_MENU_NODE_GROUPS } from "@/lib/nodeConfig";
 import { CANVAS_VIEWPORT_CHANGE_EVENT } from "@/lib/canvasViewportEvents";
+import { getInputPortOffsetPercent } from "@/lib/inputPorts";
 import { getNodeTypeLabel } from "@/lib/utils";
 import { getNodeTypeIcon } from "@/lib/iconography";
 import { NodeType } from "@/types/nodes";
@@ -42,6 +43,7 @@ interface Props {
   onAddDownstream?: (type: NodeType) => void;
   children: React.ReactNode;
   showInputPort?: boolean;
+  inputPortCount?: number;
   showOutputPort?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -65,6 +67,7 @@ export default function NodeShell({
   onAddDownstream,
   children,
   showInputPort = true,
+  inputPortCount = 1,
   showOutputPort = true,
   collapsed,
   onToggleCollapse,
@@ -210,13 +213,22 @@ export default function NodeShell({
       style={{ position: "relative", width: "100%", height: fillParent ? "100%" : undefined }}
     >
       {/* Input port */}
-      {showInputPort && (
+      {showInputPort && Array.from({ length: inputPortCount }).map((_, inputIndex) => (
         <div
+          key={`input-${inputIndex}`}
           className="port input"
-          style={{ background: headerColor }}
-          title="Drop connection here"
+          data-input-index={inputIndex}
+          style={{
+            background: headerColor,
+            top: `${getInputPortOffsetPercent(inputPortCount, inputIndex)}%`,
+          }}
+          title={
+            inputPortCount > 1
+              ? `Drop connection on input ${inputIndex + 1}`
+              : "Drop connection here"
+          }
         />
-      )}
+      ))}
 
       {/* Output port */}
       {showOutputPort && (

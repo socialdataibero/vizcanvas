@@ -1,6 +1,6 @@
 import { createStore, useStore } from "@/lib/createStore";
 import { v4 as uuidv4 } from "uuid";
-import { ControlsConfig, FromConfig, GroupConfig, NodeType, NodeConfig, QueryResult, SQLConfig } from "@/types/nodes";
+import { ControlsConfig, FromConfig, GroupConfig, JoinConfig, NodeType, NodeConfig, QueryResult, SQLConfig } from "@/types/nodes";
 import { DAGNode, DAGEdge, ExecutionContext } from "@/engine/types";
 import { topologicalSortRecord, getDownstreamNodes, getUpstreamNodes } from "@/engine/dag";
 import { getExecutor } from "@/engine/executor";
@@ -213,6 +213,18 @@ const dagStore = createStore<DAGState>((set, get) => ({
       const lastRunVersion = config.lastRunVersion ?? 0;
 
       if (!hasOperation || lastRunVersion < configVersion) {
+        set((currentState) => resetNodeExecutionState(nodeId, currentState));
+        return;
+      }
+    }
+
+    if (node.type === "join") {
+      const config = node.config as JoinConfig;
+      const hasJoinColumns = Boolean(config.leftColumn?.trim() && config.rightColumn?.trim());
+      const configVersion = config.configVersion ?? 0;
+      const lastRunVersion = config.lastRunVersion ?? 0;
+
+      if (!hasJoinColumns || lastRunVersion < configVersion) {
         set((currentState) => resetNodeExecutionState(nodeId, currentState));
         return;
       }

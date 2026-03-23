@@ -1,13 +1,22 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { LuChartColumnBig, LuFolderOpen } from "react-icons/lu";
 import { useDataStore } from "@/stores/dataStore";
 import { isSupported } from "@/db/fileLoader";
+import { readPersistedUploadedTables } from "@/lib/persistence";
 import { formatBytes } from "@/lib/utils";
+import {
+  JoinSuggestion,
+  SuggestedMapFlow,
+  getColumnRoleLabel,
+  getSuggestedMapFlows,
+  hasGeometryColumn,
+} from "@/lib/columnSemantics";
 
 interface Props {
   onAddFromNode: (tableName: string) => void;
+  onCreateMapFlow: (tableName: string, suggestion?: SuggestedMapFlow) => void;
 }
 
 function ColTypeIcon({ type }: { type: string }) {
@@ -20,7 +29,49 @@ function ColTypeIcon({ type }: { type: string }) {
   return <span className="col-type-badge col-type-str">T</span>;
 }
 
-export default function DataPanel({ onAddFromNode }: Props) {
+function ColRoleBadge({ role }: { role: "geometry" | "latitude" | "longitude" | "join_key" | undefined }) {
+  const label = getColumnRoleLabel(role);
+  if (!label) return null;
+
+  const palette =
+    role === "geometry"
+      ? "bg-emerald-100 text-emerald-700"
+      : role === "join_key"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-sky-100 text-sky-700";
+
+  return (
+    <span className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${palette}`}>
+      {label}
+    </span>
+  );
+}
+
+function getJoinStrength(suggestion: JoinSuggestion): {
+  label: string;
+  className: string;
+} {
+  if (suggestion.sampleCoverage >= 0.9 || suggestion.sharedValueCount >= 12 || suggestion.score >= 70) {
+    return {
+      label: "Strong",
+      className: "bg-emerald-100 text-emerald-700",
+    };
+  }
+
+  if (suggestion.sampleCoverage >= 0.45 || suggestion.sharedValueCount >= 4 || suggestion.score >= 35) {
+    return {
+      label: "Good",
+      className: "bg-sky-100 text-sky-700",
+    };
+  }
+
+  return {
+    label: "Possible",
+    className: "bg-amber-100 text-amber-700",
+  };
+}
+
+export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
   const tables = useDataStore((s) => s.tables);
   const uploadFile = useDataStore((s) => s.uploadFile);
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
@@ -53,6 +104,20 @@ export default function DataPanel({ onAddFromNode }: Props) {
   const filteredTables = tables.filter((t) =>
     !search || t.name.toLowerCase().includes(search.toLowerCase())
   );
+  const mapSuggestionByTable = useMemo(() => {
+    const persistedRowsByTable = new Map(
+      readPersistedUploadedTables().map((table) => [table.name, table.rows] as const)
+    );
+    const tablesWithRows = tables.map((table) => ({
+      ...table,
+      rows: persistedRowsByTable.get(table.name),
+    }));
+
+    return new Map(
+      tables
+        .map((table) => [table.name, getSuggestedMapFlows(tablesWithRows, table.name)[0] ?? null] as const)
+    );
+  }, [tables]);
 
   return (
     <div
@@ -71,7 +136,7 @@ export default function DataPanel({ onAddFromNode }: Props) {
           {uploading ? <span className="animate-spin text-xs inline-block">↻</span> : <span>+</span>}
           Upload
         </button>
-        <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.tsv,.json,.jsonl,.parquet" multiple onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.tsv,.json,.jsonl,.parquet,.geojson,.topojson" multiple onChange={handleFileChange} />
       </div>
 
       {/* Search */}
@@ -92,7 +157,7 @@ export default function DataPanel({ onAddFromNode }: Props) {
         {tables.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center px-4">
             <LuFolderOpen className="h-8 w-8 text-gray-300" />
-            <p className="text-xs text-gray-500">Drop CSV, JSON, or Parquet files here</p>
+            <p className="text-xs text-gray-500">Drop CSV, JSON, GeoJSON, TopoJSON, or Parquet files here</p>
             <button
               onClick={async () => {
                 setUploading(true);
@@ -127,28 +192,131 @@ export default function DataPanel({ onAddFromNode }: Props) {
                   className="group flex items-center gap-1.5 px-2 py-2 hover:bg-gray-50 cursor-pointer"
                   onClick={() => setExpandedTable(expandedTable === table.name ? null : table.name)}
                 >
+                  {(() => {
+                    const isGeospatialTable = hasGeometryColumn(table.columns);
+                    const topMapSuggestion = mapSuggestionByTable.get(table.name) ?? null;
+                    const canCreateMap = isGeospatialTable && Boolean(topMapSuggestion);
+
+                    return (
+                      <>
                   <span className="text-gray-400 text-[9px] flex-shrink-0">
                     {expandedTable === table.name ? "▾" : "▸"}
                   </span>
                   <span className="text-[11px] text-gray-400 flex-shrink-0">⊞</span>
                   <span className="text-xs font-medium text-gray-800 truncate flex-1">{table.name}</span>
+                  {isGeospatialTable && (
+                    <span className="flex-shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
+                      Geo
+                    </span>
+                  )}
                   <span className="text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                     {table.columns.length}c
                   </span>
+                  {canCreateMap && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onCreateMapFlow(table.name, topMapSuggestion ?? undefined); }}
+                      title="Create a map with the best suggested join"
+                      className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-white transition-opacity"
+                      style={{ background: "#0f766e" }}
+                    >
+                      Map
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onAddFromNode(table.name); }}
+                    title="Open as source node"
                     className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-white transition-opacity"
                     style={{ background: "#14b8a6" }}
                   >
                     +
                   </button>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {expandedTable === table.name && (
                   <div className="border-t border-gray-50 bg-gray-50/50">
+                    {(() => {
+                      const isGeospatialTable = hasGeometryColumn(table.columns);
+                      const topMapSuggestion = mapSuggestionByTable.get(table.name) ?? null;
+                      const candidateTableCount = tables.filter(
+                        (candidate) => candidate.name !== table.name && !hasGeometryColumn(candidate.columns)
+                      ).length;
+
+                      if (!isGeospatialTable) return null;
+
+                      return (
+                        <div className="border-b border-gray-100 bg-emerald-50/70 px-3 py-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                Suggested Map Join
+                              </div>
+                              {topMapSuggestion ? (
+                                <p className="mt-1 text-[10px] leading-4 text-emerald-700">
+                                  Checked {candidateTableCount} tabular table{candidateTableCount === 1 ? "" : "s"} and kept
+                                  the best match by key names and shared sample values.
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[10px] leading-4 text-emerald-700">
+                                  No matching tabular table found yet. Load a table with a shared key such as state code or
+                                  state name to enable one-click map creation.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {topMapSuggestion && (
+                            <div className="mt-2 space-y-2">
+                              {(() => {
+                                const strength = getJoinStrength(topMapSuggestion.join);
+
+                                return (
+                                  <div className="rounded-md border border-emerald-300 bg-white px-2.5 py-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white">
+                                            Best Match
+                                          </span>
+                                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${strength.className}`}>
+                                            {strength.label}
+                                          </span>
+                                          <span className="truncate text-[11px] font-semibold text-emerald-950">
+                                            {topMapSuggestion.dataTableName}
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] leading-4 text-emerald-800">
+                                          Join <span className="font-mono">{topMapSuggestion.join.leftColumn}</span> ={" "}
+                                          <span className="font-mono">{topMapSuggestion.join.rightColumn}</span>
+                                        </p>
+                                        <p className="mt-1 text-[10px] leading-4 text-emerald-700">
+                                          {topMapSuggestion.join.reason}
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onCreateMapFlow(table.name, topMapSuggestion);
+                                        }}
+                                        className="flex-shrink-0 rounded px-2 py-1 text-[10px] font-medium text-white"
+                                        style={{ background: "#0f766e" }}
+                                      >
+                                        Create
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {table.columns.map((col) => (
                       <div key={col.name} className="flex items-center gap-1.5 px-3 py-1 hover:bg-gray-100">
                         <ColTypeIcon type={col.type} />
+                        <ColRoleBadge role={col.role} />
                         <span className="text-[11px] text-gray-700 truncate flex-1">{col.name}</span>
                         <span className="text-[9px] text-gray-400 font-mono truncate max-w-[55px]">
                           {col.type.split("(")[0].toLowerCase()}

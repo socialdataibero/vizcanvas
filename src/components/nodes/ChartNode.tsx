@@ -15,6 +15,7 @@ import {
   type ChartFieldKey,
   type ChartFieldRequirement,
 } from "@/lib/chartCatalog";
+import { findGeometryColumn, parseGeometryValue } from "@/lib/geospatial";
 
 interface Props {
   node: DAGNode;
@@ -24,6 +25,7 @@ interface Props {
 type TabId = "type" | "data" | "options";
 
 const BASE_CHART_COLOR = "#14b8a6";
+const ALL_CHART_FIELDS: ChartFieldKey[] = ["x", "y", "x2", "y2", "color", "size", "length", "label", "facet"];
 
 function isNumericType(type: string): boolean {
   return /int|float|double|decimal|numeric|real|bigint|smallint|tinyint/i.test(type);
@@ -44,6 +46,20 @@ function getFieldRequirement(
     case "heatmap":
       if (field === "x" || field === "y") return "required";
       return field === "color" ? "optional" : null;
+    case "choropleth":
+      return field === "x" || field === "y" ? "required" : null;
+    case "geoPoint":
+      if (field === "x" || field === "y") return "required";
+      return field === "color" || field === "size" ? "optional" : null;
+    case "spike":
+      if (field === "x" || field === "y" || field === "length") return "required";
+      return field === "color" ? "optional" : null;
+    case "arc":
+      if (field === "x" || field === "y" || field === "x2" || field === "y2") return "required";
+      return field === "color" || field === "length" ? "optional" : null;
+    case "link":
+      if (field === "x" || field === "y" || field === "x2" || field === "y2") return "required";
+      return field === "color" || field === "label" ? "optional" : null;
     case "scatter":
     case "dot":
       if (field === "x") return "required";
@@ -52,6 +68,17 @@ function getFieldRequirement(
       return null;
     case "box":
       return field === "x" || field === "y" ? "required" : null;
+    case "stackedBar":
+      if (field === "x" || field === "y" || field === "color") return "required";
+      return null;
+    case "waffle":
+    case "waterfall":
+    case "treemap":
+      if (field === "x" || field === "y") return "required";
+      return field === "color" ? "optional" : null;
+    case "grid":
+      if (field === "x" || field === "y" || field === "color") return "required";
+      return field === "label" ? "optional" : null;
     case "bar":
     case "barY":
     case "barX":
@@ -72,23 +99,99 @@ function getFieldLabel(
 ): string {
   switch (field) {
     case "x":
+      if (entry?.id === "world-choropleth") return "Country";
+      if (entry?.id === "dot-map") return "Longitude";
+      if (entry?.id === "arc-map") return "Origin Lon";
+      if (entry?.id === "sankey-diagram") return "Source";
+      if (entry?.id === "waterfall-chart") return "Step";
+      if (entry?.id === "treemap") return "Item";
+      if (entry?.id === "grid-cartogram") return "Column";
+      if (entry?.id === "link-chart") return "Start X";
+      if (entry?.id === "waffle-chart" || entry?.id === "stacked-bar") return "Category";
       if (entry?.id === "horizontal-bar") return "Value";
       if (entry?.id === "grouped-bar") return "Series";
       if (entry?.id === "temporal-histogram") return "Time";
       return chartType === "histogram" ? "Value" : "X";
     case "y":
+      if (entry?.id === "world-choropleth") return "Value";
+      if (entry?.id === "dot-map") return "Latitude";
+      if (entry?.id === "arc-map") return "Origin Lat";
+      if (entry?.id === "spike-map") return "Latitude";
+      if (entry?.id === "sankey-diagram") return "Target";
+      if (entry?.id === "waterfall-chart") return "Change";
+      if (entry?.id === "treemap" || entry?.id === "waffle-chart" || entry?.id === "stacked-bar") {
+        return "Value";
+      }
+      if (entry?.id === "grid-cartogram") return "Row";
+      if (entry?.id === "link-chart") return "Start Y";
       if (entry?.id === "horizontal-bar") return "Category";
       return "Y";
+    case "x2":
+      if (entry?.id === "arc-map") return "Dest Lon";
+      if (entry?.id === "link-chart") return "End X";
+      return "X2";
+    case "y2":
+      if (entry?.id === "arc-map") return "Dest Lat";
+      if (entry?.id === "link-chart") return "End Y";
+      return "Y2";
     case "color":
+      if (entry?.id === "dot-map") return "Color";
+      if (entry?.id === "arc-map") return "Color";
+      if (entry?.id === "spike-map") return "Color";
+      if (entry?.id === "sankey-diagram") return "Group";
+      if (entry?.id === "stacked-bar") return "Segment";
+      if (entry?.id === "treemap") return "Group";
+      if (entry?.id === "grid-cartogram") return "Value";
+      if (entry?.id === "link-chart") return "Color";
       if (entry?.id === "grouped-bar" || entry?.id === "multi-series-line") {
         return "Series";
       }
       return "Color";
     case "size":
+      if (entry?.id === "dot-map") return "Size";
+      if (entry?.id === "sankey-diagram") return "Value";
       return "Size";
+    case "length":
+      if (entry?.id === "arc-map") return "Weight";
+      if (entry?.id === "spike-map") return "Magnitude";
+      return "Length";
+    case "label":
+      if (entry?.id === "grid-cartogram") return "Label";
+      if (entry?.id === "link-chart") return "Label";
+      return "Label";
     case "facet":
       if (entry?.id === "grouped-bar") return "Group";
       return "Facet";
+  }
+}
+
+function getFieldOrder(
+  entry: ChartCatalogEntry | null,
+  chartType: ChartType | undefined
+): ChartFieldKey[] {
+  switch (entry?.id ?? chartType) {
+    case "world-choropleth":
+    case "choropleth":
+      return ["x", "y"];
+    case "dot-map":
+    case "geoPoint":
+      return ["x", "y", "size", "color"];
+    case "spike-map":
+    case "spike":
+      return ["x", "y", "length", "color"];
+    case "arc-map":
+    case "arc":
+      return ["x", "y", "x2", "y2", "length", "color"];
+    case "grid-cartogram":
+    case "grid":
+      return ["x", "y", "color", "label"];
+    case "link-chart":
+    case "link":
+      return ["x", "y", "x2", "y2", "label", "color"];
+    case "sankey-diagram":
+      return ["x", "y", "size", "color"];
+    default:
+      return ["y", "x", "color", "size", "facet"];
   }
 }
 
@@ -98,7 +201,7 @@ function getMissingConfigFields(
 ): ChartFieldKey[] {
   if (!config.chartType) return ["x"];
 
-  return (["x", "y", "color", "size", "facet"] as ChartFieldKey[]).filter((field) => {
+  return ALL_CHART_FIELDS.filter((field) => {
     if (getFieldRequirement(entry, config.chartType, field) !== "required") {
       return false;
     }
@@ -108,10 +211,18 @@ function getMissingConfigFields(
         return !config.xColumn;
       case "y":
         return !config.yColumn;
+      case "x2":
+        return !config.x2Column;
+      case "y2":
+        return !config.y2Column;
       case "color":
         return !config.colorColumn;
       case "size":
         return !config.sizeColumn;
+      case "length":
+        return !config.lengthColumn;
+      case "label":
+        return !config.labelColumn;
       case "facet":
         return !config.facetColumn;
     }
@@ -148,6 +259,41 @@ function getColumnOptions(
   const numericOrAll = numericColumns.length > 0 ? numericColumns : allColumns;
 
   switch (entry?.id ?? chartType) {
+    case "world-choropleth":
+      return field === "y" ? numericOrAll : allColumns;
+    case "dot-map":
+      if (field === "x" || field === "y" || field === "size") return numericOrAll;
+      return allColumns;
+    case "spike-map":
+    case "spike":
+      if (field === "x" || field === "y" || field === "length") return numericOrAll;
+      return allColumns;
+    case "arc-map":
+    case "arc":
+      if (field === "x" || field === "y" || field === "x2" || field === "y2" || field === "length") {
+        return numericOrAll;
+      }
+      return allColumns;
+    case "sankey-diagram":
+      if (field === "size") return numericOrAll;
+      return allColumns;
+    case "stacked-bar":
+      if (field === "y") return numericOrAll;
+      return allColumns;
+    case "waffle-chart":
+    case "waterfall-chart":
+    case "treemap":
+      if (field === "y") return numericOrAll;
+      return allColumns;
+    case "grid-cartogram":
+      if (field === "color") return numericOrAll;
+      return allColumns;
+    case "link-chart":
+    case "link":
+      if (field === "x" || field === "y" || field === "x2" || field === "y2") {
+        return numericOrAll;
+      }
+      return allColumns;
     case "horizontal-bar":
       return field === "x" ? numericOrAll : allColumns;
     case "grouped-bar":
@@ -177,6 +323,326 @@ function getColumnOptions(
   }
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function buildWaterfallData(
+  data: Record<string, unknown>[],
+  xColumn: string,
+  yColumn: string,
+  colorColumn?: string
+) {
+  let runningTotal = 0;
+
+  return data.flatMap((row) => {
+    const change = toFiniteNumber(row[yColumn]);
+    const step = row[xColumn];
+    if (change === null || step === undefined || step === null) {
+      return [];
+    }
+
+    const start = runningTotal;
+    const end = runningTotal + change;
+    runningTotal = end;
+
+    return [{
+      step: String(step),
+      start,
+      end,
+      change,
+      label: change > 0 ? `+${change}` : `${change}`,
+      fill:
+        colorColumn && row[colorColumn] !== undefined && row[colorColumn] !== null
+          ? String(row[colorColumn])
+          : change >= 0
+            ? "Increase"
+            : "Decrease",
+    }];
+  });
+}
+
+async function buildTreemapLeaves(
+  data: Record<string, unknown>[],
+  labelColumn: string,
+  valueColumn: string,
+  width: number,
+  height: number,
+  groupColumn?: string
+) {
+  const d3 = await import("d3");
+  const groupedValues = new Map<string, Map<string, number>>();
+  type TreemapDatum = {
+    name: string;
+    value?: number;
+    children?: TreemapDatum[];
+  };
+
+  data.forEach((row) => {
+    const label = row[labelColumn];
+    const value = toFiniteNumber(row[valueColumn]);
+    if (label === undefined || label === null || value === null) return;
+
+    const groupKey =
+      groupColumn && row[groupColumn] !== undefined && row[groupColumn] !== null
+        ? String(row[groupColumn])
+        : "All";
+    const itemKey = String(label);
+    const groupItems = groupedValues.get(groupKey) ?? new Map<string, number>();
+    groupItems.set(itemKey, (groupItems.get(itemKey) ?? 0) + value);
+    groupedValues.set(groupKey, groupItems);
+  });
+
+  if (groupedValues.size === 0) {
+    return [];
+  }
+
+  const hierarchyData: TreemapDatum = {
+    name: "root",
+    children: Array.from(groupedValues.entries(), ([group, items]) => ({
+      name: group,
+      children: Array.from(items.entries(), ([label, value]) => ({ name: label, value })),
+    })),
+  };
+
+  const root = d3.hierarchy<TreemapDatum>(hierarchyData)
+    .sum((node) => node.value ?? 0)
+    .sort((left, right) => (right.value ?? 0) - (left.value ?? 0));
+
+  const layout = d3.treemap<TreemapDatum>()
+    .size([width, height])
+    .padding(1);
+
+  const treemapRoot = layout(root);
+
+  return treemapRoot.leaves().map((leaf) => ({
+    x0: leaf.x0,
+    x1: leaf.x1,
+    y0: leaf.y0,
+    y1: leaf.y1,
+    label: leaf.data.name,
+    value: leaf.value ?? 0,
+    group: leaf.parent?.data.name ?? leaf.data.name,
+  }));
+}
+
+const GEO_NAME_ALIASES: Record<string, string> = {
+  us: "unitedstatesofamerica",
+  usa: "unitedstatesofamerica",
+  unitedstates: "unitedstatesofamerica",
+  uk: "unitedkingdom",
+  uae: "unitedarabemirates",
+  czechia: "czechrepublic",
+};
+
+function normalizeGeoLookupKey(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+
+  return GEO_NAME_ALIASES[normalized] ?? normalized;
+}
+
+async function loadWorldAtlasFeatures() {
+  const [{ feature }, countriesModule, landModule] = await Promise.all([
+    import("topojson-client"),
+    import("world-atlas/countries-110m.json"),
+    import("world-atlas/land-110m.json"),
+  ]);
+
+  const countriesAtlas = (countriesModule.default ?? countriesModule) as {
+    objects: { countries: unknown };
+  };
+  const landAtlas = (landModule.default ?? landModule) as {
+    objects: { land: unknown };
+  };
+
+  const countries = feature(countriesAtlas as never, countriesAtlas.objects.countries as never) as unknown as {
+    features: Array<{ properties?: { name?: string } }>;
+  };
+  const land = feature(landAtlas as never, landAtlas.objects.land as never);
+
+  return { countries: countries.features, land };
+}
+
+function buildCountryValueLookup(
+  data: Record<string, unknown>[],
+  countryColumn: string,
+  valueColumn: string
+) {
+  const values = new Map<string, number>();
+
+  data.forEach((row) => {
+    const key = normalizeGeoLookupKey(row[countryColumn]);
+    const value = toFiniteNumber(row[valueColumn]);
+    if (!key || value === null) return;
+    values.set(key, (values.get(key) ?? 0) + value);
+  });
+
+  return values;
+}
+
+type GeometryFeatureDatum = {
+  type: "Feature";
+  properties: {
+    label: string;
+    value: number | null;
+  };
+  geometry: {
+    type: string;
+  } & Record<string, unknown>;
+};
+
+function buildGeometryFeatures(
+  data: Record<string, unknown>[],
+  geometryColumn: string,
+  labelColumn: string,
+  valueColumn: string
+): GeometryFeatureDatum[] {
+  return data.flatMap((row) => {
+    const geometry = parseGeometryValue(row[geometryColumn]);
+    if (!geometry) return [];
+
+    return [{
+      type: "Feature",
+      properties: {
+        label:
+          row[labelColumn] === undefined || row[labelColumn] === null
+            ? "Unknown"
+            : String(row[labelColumn]),
+        value: toFiniteNumber(row[valueColumn]),
+      },
+      geometry,
+    }];
+  });
+}
+
+async function buildSankeyData(
+  data: Record<string, unknown>[],
+  sourceColumn: string,
+  targetColumn: string,
+  valueColumn: string,
+  width: number,
+  height: number,
+  groupColumn?: string
+) {
+  const { sankey } = await import("d3-sankey");
+  type SankeyNodeDatum = {
+    name: string;
+    group: string;
+  };
+  type SankeyLinkDatum = {
+    source: string;
+    target: string;
+    value: number;
+    group: string;
+  };
+
+  const nodeGroups = new Map<string, string>();
+  const aggregatedLinks = new Map<string, SankeyLinkDatum>();
+
+  data.forEach((row) => {
+    const source = row[sourceColumn];
+    const target = row[targetColumn];
+    const value = toFiniteNumber(row[valueColumn]);
+    if (source === undefined || source === null || target === undefined || target === null || value === null) {
+      return;
+    }
+
+    const sourceName = String(source);
+    const targetName = String(target);
+    const group =
+      groupColumn && row[groupColumn] !== undefined && row[groupColumn] !== null
+        ? String(row[groupColumn])
+        : sourceName;
+    const key = `${sourceName}→${targetName}→${group}`;
+    const existingLink = aggregatedLinks.get(key);
+
+    if (existingLink) {
+      existingLink.value += value;
+    } else {
+      aggregatedLinks.set(key, {
+        source: sourceName,
+        target: targetName,
+        value,
+        group,
+      });
+    }
+
+    if (!nodeGroups.has(sourceName)) nodeGroups.set(sourceName, group);
+    if (!nodeGroups.has(targetName)) nodeGroups.set(targetName, group);
+  });
+
+  const nodes = Array.from(
+    new Set(
+      Array.from(aggregatedLinks.values()).flatMap((link) => [link.source, link.target])
+    )
+  ).map((name) => ({
+    name,
+    group: nodeGroups.get(name) ?? name,
+  }));
+
+  const links = Array.from(aggregatedLinks.values()).map((link) => ({ ...link }));
+  if (nodes.length === 0 || links.length === 0) {
+    return { nodes: [], linkBands: [] };
+  }
+
+  const layout = sankey<SankeyNodeDatum, SankeyLinkDatum>()
+    .nodeId((node: SankeyNodeDatum) => node.name)
+    .nodeWidth(18)
+    .nodePadding(14)
+    .extent([[0, 0], [Math.max(width - 40, 240), Math.max(height - 24, 180)]]);
+
+  const graph = layout({
+    nodes: nodes.map((node) => ({ ...node })) as SankeyNodeDatum[],
+    links: links.map((link) => ({ ...link })) as SankeyLinkDatum[],
+  });
+
+  const sankeyNodes = graph.nodes.map((node) => ({
+    x0: node.x0,
+    x1: node.x1,
+    y0: node.y0,
+    y1: node.y1,
+    name: node.name,
+    group: node.group,
+  }));
+
+  const linkBands = graph.links.flatMap((link) => {
+    const sourceNode = link.source as SankeyNodeDatum & { x0: number; x1: number; y0: number; y1: number };
+    const targetNode = link.target as SankeyNodeDatum & { x0: number; x1: number; y0: number; y1: number };
+    const widthValue = link.width ?? 0;
+    const sourceY = link.y0 ?? (sourceNode.y0 + sourceNode.y1) / 2;
+    const targetY = link.y1 ?? (targetNode.y0 + targetNode.y1) / 2;
+
+    if (widthValue <= 0) {
+      return [];
+    }
+
+    return [{
+      group: link.group,
+      points: [
+        {
+          x: sourceNode.x1,
+          y0: sourceY - widthValue / 2,
+          y1: sourceY + widthValue / 2,
+        },
+        {
+          x: targetNode.x0,
+          y0: targetY - widthValue / 2,
+          y1: targetY + widthValue / 2,
+        },
+      ],
+    }];
+  });
+
+  return { nodes: sankeyNodes, linkBands };
+}
+
 export default function ChartNodeBody({ node, presentationMode = false }: Props) {
   const config = node.config as ChartConfig;
   const {
@@ -184,8 +650,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     chartCatalogId,
     xColumn,
     yColumn,
+    x2Column,
+    y2Column,
     colorColumn,
     sizeColumn,
+    lengthColumn,
+    labelColumn,
     facetColumn,
   } = config;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
@@ -193,6 +663,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const upstreamNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
   const columns = useMemo(() => upstreamNode?.result?.columns ?? [], [upstreamNode?.result?.columns]);
   const data = useMemo(() => upstreamNode?.result?.rows ?? [], [upstreamNode?.result?.rows]);
+  const geometryColumn = useMemo(() => findGeometryColumn(columns), [columns]);
   const previewRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<TabId>("type");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -232,8 +703,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           chartType,
           xColumn,
           yColumn,
+          x2Column,
+          y2Column,
           colorColumn,
           sizeColumn,
+          lengthColumn,
+          labelColumn,
           facetColumn,
         },
         selectedCatalogEntry
@@ -253,8 +728,29 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         const marks: PlotModule.Markish[] = [];
         const variantId = selectedCatalogEntry?.id ?? chartType;
         let showColorLegend = false;
+        let showGrid = true;
+        const plotOptions: Record<string, unknown> = {};
 
         switch (variantId) {
+          case "stacked-bar":
+            if (xColumn && yColumn && colorColumn) {
+              showColorLegend = true;
+              marks.push(
+                Plot.barY(
+                  data,
+                  Plot.groupX(
+                    { y: "sum" },
+                    {
+                      x: xColumn,
+                      y: yColumn,
+                      fill: colorColumn,
+                    } as Record<string, unknown>
+                  )
+                )
+              );
+              marks.push(Plot.ruleY([0]));
+            }
+            break;
           case "grouped-bar":
             if (xColumn && yColumn && colorColumn && facetColumn) {
               showColorLegend = true;
@@ -296,6 +792,48 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 })
               );
               marks.push(Plot.ruleX([0]));
+            }
+            break;
+          case "waffle-chart":
+            if (xColumn && yColumn) {
+              showColorLegend = true;
+              showGrid = false;
+              marks.push(
+                Plot.waffleY(data, {
+                  x: xColumn,
+                  y: yColumn,
+                  fill: colorColumn || xColumn,
+                } as Record<string, unknown>)
+              );
+            }
+            break;
+          case "waterfall-chart":
+            if (xColumn && yColumn) {
+              const waterfallData = buildWaterfallData(data as Record<string, unknown>[], xColumn, yColumn, colorColumn);
+              if (waterfallData.length > 0) {
+                showColorLegend = Boolean(colorColumn);
+                marks.push(
+                  Plot.barY(waterfallData, {
+                    x: "step",
+                    y1: "start",
+                    y2: "end",
+                    fill: colorColumn
+                      ? "fill"
+                      : (row: { change: number }) => row.change >= 0 ? "#10b981" : "#ef4444",
+                  } as Record<string, unknown>)
+                );
+                marks.push(
+                  Plot.text(waterfallData, {
+                    x: "step",
+                    y: (row: { start: number; end: number }) => Math.max(row.start, row.end),
+                    text: "label",
+                    dy: -8,
+                    fontWeight: "bold",
+                    fontSize: 10,
+                  } as Record<string, unknown>)
+                );
+                marks.push(Plot.ruleY([0]));
+              }
             }
             break;
           case "line-chart":
@@ -456,6 +994,355 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               );
             }
             break;
+          case "world-choropleth":
+            if (xColumn && yColumn) {
+              showColorLegend = true;
+              showGrid = false;
+              plotOptions.marginTop = 8;
+              plotOptions.marginRight = 8;
+              plotOptions.marginBottom = 8;
+              plotOptions.marginLeft = 8;
+              plotOptions.color = { legend: true, scheme: "YlGnBu" };
+
+              if (geometryColumn) {
+                const features = buildGeometryFeatures(
+                  data as Record<string, unknown>[],
+                  geometryColumn,
+                  xColumn,
+                  yColumn
+                );
+
+                if (features.length > 0) {
+                  plotOptions.projection = {
+                    type: "mercator",
+                    domain: {
+                      type: "FeatureCollection",
+                      features,
+                    },
+                  };
+                  marks.push(
+                    Plot.geo(features, {
+                      fill: (feature: GeometryFeatureDatum) => feature.properties.value,
+                      stroke: "#ffffff",
+                      strokeWidth: 0.5,
+                      title: (feature: GeometryFeatureDatum) =>
+                        feature.properties.value === null
+                          ? feature.properties.label
+                          : `${feature.properties.label}: ${feature.properties.value}`,
+                    } as Record<string, unknown>)
+                  );
+                  break;
+                }
+              }
+
+              const { countries, land } = await loadWorldAtlasFeatures();
+              const valueLookup = buildCountryValueLookup(data as Record<string, unknown>[], xColumn, yColumn);
+              plotOptions.projection = "equal-earth";
+              marks.push(
+                Plot.geo(land, {
+                  fill: "#f8fafc",
+                  stroke: "#cbd5e1",
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.geo(countries, {
+                  fill: (feature: { properties?: { name?: string } }) =>
+                    valueLookup.get(normalizeGeoLookupKey(feature.properties?.name)),
+                  stroke: "#ffffff",
+                  strokeWidth: 0.5,
+                  title: (feature: { properties?: { name?: string } }) => {
+                    const name = feature.properties?.name ?? "Unknown";
+                    const value = valueLookup.get(normalizeGeoLookupKey(name));
+                    return value === undefined ? name : `${name}: ${value}`;
+                  },
+                } as Record<string, unknown>)
+              );
+              marks.push(Plot.sphere());
+            }
+            break;
+          case "dot-map":
+            if (xColumn && yColumn) {
+              const { land } = await loadWorldAtlasFeatures();
+              showColorLegend = Boolean(colorColumn);
+              showGrid = false;
+              plotOptions.projection = "equal-earth";
+              plotOptions.marginTop = 8;
+              plotOptions.marginRight = 8;
+              plotOptions.marginBottom = 8;
+              plotOptions.marginLeft = 8;
+              marks.push(
+                Plot.geo(land, {
+                  fill: "#f8fafc",
+                  stroke: "#cbd5e1",
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.dot(data, {
+                  x: xColumn,
+                  y: yColumn,
+                  fill: colorColumn || BASE_CHART_COLOR,
+                  r: sizeColumn || 3,
+                  fillOpacity: 0.7,
+                } as Record<string, unknown>)
+              );
+              marks.push(Plot.sphere());
+            }
+            break;
+          case "spike-map":
+          case "spike":
+            if (xColumn && yColumn && lengthColumn) {
+              const { land } = await loadWorldAtlasFeatures();
+              showColorLegend = Boolean(colorColumn);
+              showGrid = false;
+              plotOptions.projection = "equal-earth";
+              plotOptions.marginTop = 8;
+              plotOptions.marginRight = 8;
+              plotOptions.marginBottom = 8;
+              plotOptions.marginLeft = 8;
+              marks.push(
+                Plot.geo(land, {
+                  fill: "#f8fafc",
+                  stroke: "#cbd5e1",
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.vector(data, {
+                  x: xColumn,
+                  y: yColumn,
+                  length: lengthColumn,
+                  rotate: 180,
+                  anchor: "start",
+                  stroke: colorColumn || BASE_CHART_COLOR,
+                  strokeWidth: 1.5,
+                  strokeOpacity: 0.8,
+                } as Record<string, unknown>)
+              );
+              marks.push(Plot.sphere());
+            }
+            break;
+          case "arc-map":
+          case "arc":
+            if (xColumn && yColumn && x2Column && y2Column) {
+              const { land } = await loadWorldAtlasFeatures();
+              const locations = (data as Record<string, unknown>[]).flatMap((row) => {
+                const originLon = toFiniteNumber(row[xColumn]);
+                const originLat = toFiniteNumber(row[yColumn]);
+                const destLon = toFiniteNumber(row[x2Column]);
+                const destLat = toFiniteNumber(row[y2Column]);
+                const points: Array<{ longitude: number; latitude: number }> = [];
+
+                if (originLon !== null && originLat !== null) {
+                  points.push({ longitude: originLon, latitude: originLat });
+                }
+                if (destLon !== null && destLat !== null) {
+                  points.push({ longitude: destLon, latitude: destLat });
+                }
+
+                return points;
+              });
+
+              showGrid = false;
+              showColorLegend = Boolean(colorColumn);
+              plotOptions.projection = "equal-earth";
+              plotOptions.marginTop = 8;
+              plotOptions.marginRight = 8;
+              plotOptions.marginBottom = 8;
+              plotOptions.marginLeft = 8;
+              marks.push(
+                Plot.geo(land, {
+                  fill: "#f8fafc",
+                  stroke: "#cbd5e1",
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.arrow(data, {
+                  x1: xColumn,
+                  y1: yColumn,
+                  x2: x2Column,
+                  y2: y2Column,
+                  bend: true,
+                  stroke: colorColumn || BASE_CHART_COLOR,
+                  strokeOpacity: 0.45,
+                  strokeWidth: lengthColumn || 1.5,
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.dot(locations, {
+                  x: "longitude",
+                  y: "latitude",
+                  fill: "#0f172a",
+                  r: 1.8,
+                } as Record<string, unknown>)
+              );
+              marks.push(Plot.sphere());
+            }
+            break;
+          case "treemap":
+            if (xColumn && yColumn) {
+              const leaves = await buildTreemapLeaves(
+                data as Record<string, unknown>[],
+                xColumn,
+                yColumn,
+                plotSize.width,
+                plotSize.height,
+                colorColumn
+              );
+              if (leaves.length > 0) {
+                showColorLegend = true;
+                showGrid = false;
+                plotOptions.x = { axis: null };
+                plotOptions.y = { axis: null };
+                plotOptions.marginTop = 20;
+                plotOptions.marginRight = 8;
+                plotOptions.marginBottom = 8;
+                plotOptions.marginLeft = 8;
+                marks.push(
+                  Plot.rect(leaves, {
+                    x1: "x0",
+                    x2: "x1",
+                    y1: "y0",
+                    y2: "y1",
+                    fill: "group",
+                    inset: 1,
+                    title: (leaf: { group: string; label: string; value: number }) =>
+                      `${leaf.group}: ${leaf.label} (${leaf.value})`,
+                  } as Record<string, unknown>)
+                );
+                marks.push(
+                  Plot.text(leaves, {
+                    x: (leaf: { x0: number; x1: number }) => (leaf.x0 + leaf.x1) / 2,
+                    y: (leaf: { y0: number; y1: number }) => (leaf.y0 + leaf.y1) / 2,
+                    text: (leaf: { x0: number; x1: number; y0: number; y1: number; label: string }) =>
+                      leaf.x1 - leaf.x0 > 38 && leaf.y1 - leaf.y0 > 22 ? leaf.label : "",
+                    textAnchor: "middle",
+                    lineAnchor: "middle",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    fill: "#fff",
+                  } as Record<string, unknown>)
+                );
+              }
+            }
+            break;
+          case "grid-cartogram":
+            if (xColumn && yColumn && colorColumn) {
+              showColorLegend = true;
+              showGrid = false;
+              plotOptions.axis = null;
+              marks.push(
+                Plot.cell(data, {
+                  x: xColumn,
+                  y: yColumn,
+                  fill: colorColumn,
+                  inset: 2,
+                } as Record<string, unknown>)
+              );
+              if (labelColumn) {
+                marks.push(
+                  Plot.text(data, {
+                    x: xColumn,
+                    y: yColumn,
+                    text: labelColumn,
+                    fontSize: 10,
+                    fontWeight: 600,
+                  } as Record<string, unknown>)
+                );
+              }
+            }
+            break;
+          case "link-chart":
+          case "link":
+            if (xColumn && yColumn && x2Column && y2Column) {
+              showGrid = false;
+              showColorLegend = Boolean(colorColumn);
+              marks.push(
+                Plot.link(data, {
+                  x1: xColumn,
+                  y1: yColumn,
+                  x2: x2Column,
+                  y2: y2Column,
+                  stroke: colorColumn || "#94a3b8",
+                  strokeOpacity: 0.7,
+                } as Record<string, unknown>)
+              );
+              marks.push(
+                Plot.dot(data, {
+                  x: x2Column,
+                  y: y2Column,
+                  fill: BASE_CHART_COLOR,
+                  r: 4,
+                } as Record<string, unknown>)
+              );
+              if (labelColumn) {
+                marks.push(
+                  Plot.text(data, {
+                    x: x2Column,
+                    y: y2Column,
+                    text: labelColumn,
+                    dx: 8,
+                    textAnchor: "start",
+                  } as Record<string, unknown>)
+                );
+              }
+            }
+            break;
+          case "sankey-diagram":
+            if (xColumn && yColumn && sizeColumn) {
+              const { nodes: sankeyNodes, linkBands } = await buildSankeyData(
+                data as Record<string, unknown>[],
+                xColumn,
+                yColumn,
+                sizeColumn,
+                plotSize.width,
+                plotSize.height,
+                colorColumn
+              );
+              if (sankeyNodes.length > 0 && linkBands.length > 0) {
+                showColorLegend = Boolean(colorColumn);
+                showGrid = false;
+                plotOptions.x = { axis: null };
+                plotOptions.y = { axis: null };
+                plotOptions.marginTop = 20;
+                plotOptions.marginRight = 48;
+                plotOptions.marginBottom = 8;
+                plotOptions.marginLeft = 8;
+
+                linkBands.forEach((band) => {
+                  marks.push(
+                    Plot.areaY(band.points, {
+                      x: "x",
+                      y1: "y0",
+                      y2: "y1",
+                      curve: "bump-x",
+                      fill: colorColumn ? band.group : "#0f172a",
+                      fillOpacity: 0.16,
+                    } as Record<string, unknown>)
+                  );
+                });
+
+                marks.push(
+                  Plot.rect(sankeyNodes, {
+                    x1: "x0",
+                    x2: "x1",
+                    y1: "y0",
+                    y2: "y1",
+                    fill: colorColumn ? "group" : "name",
+                  } as Record<string, unknown>)
+                );
+                marks.push(
+                  Plot.text(sankeyNodes, {
+                    x: "x1",
+                    y: (node: { y0: number; y1: number }) => (node.y0 + node.y1) / 2,
+                    text: "name",
+                    dx: 5,
+                    textAnchor: "start",
+                    lineAnchor: "middle",
+                    fontSize: 10,
+                  } as Record<string, unknown>)
+                );
+              }
+            }
+            break;
           case "pie":
             if (xColumn && yColumn) {
               const pieData = data.map((d: Record<string, unknown>) => ({
@@ -497,9 +1384,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             variantId === "horizontal-bar" || variantId === "barX" ? 110 : 52,
           marginBottom: 36,
           marks,
-          grid: true,
+          grid: showGrid,
           ...(variantId === "faceted-histogram" ? { fy: { label: null } } : {}),
           ...(showColorLegend ? { color: { legend: true } } : {}),
+          ...plotOptions,
           style: { fontSize: "10px", background: "transparent" },
         });
         if (!cancelled) {
@@ -523,9 +1411,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     chartType,
     colorColumn,
     facetColumn,
+    labelColumn,
+    lengthColumn,
     sizeColumn,
     xColumn,
+    x2Column,
     yColumn,
+    y2Column,
     data,
     plotSize.height,
     plotSize.width,
@@ -538,7 +1430,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const setupMessage = getChartSetupMessage(config, selectedCatalogEntry);
 
   const updateChartField = (
-    field: keyof Pick<ChartConfig, "xColumn" | "yColumn" | "colorColumn" | "sizeColumn" | "facetColumn">,
+    field: keyof Pick<
+      ChartConfig,
+      "xColumn" | "yColumn" | "x2Column" | "y2Column" | "colorColumn" | "sizeColumn" | "lengthColumn" | "labelColumn" | "facetColumn"
+    >,
     value: string
   ) => {
     updateNodeConfig(node.id, {
@@ -555,21 +1450,37 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         ? config.xColumn
         : field === "y"
           ? config.yColumn
-          : field === "color"
-            ? config.colorColumn
-            : field === "size"
-              ? config.sizeColumn
-              : config.facetColumn;
+          : field === "x2"
+            ? config.x2Column
+            : field === "y2"
+              ? config.y2Column
+              : field === "color"
+                ? config.colorColumn
+                : field === "size"
+                  ? config.sizeColumn
+                  : field === "length"
+                    ? config.lengthColumn
+                    : field === "label"
+                      ? config.labelColumn
+                      : config.facetColumn;
     const configField =
       field === "x"
         ? "xColumn"
         : field === "y"
           ? "yColumn"
-          : field === "color"
-            ? "colorColumn"
-            : field === "size"
-              ? "sizeColumn"
-              : "facetColumn";
+          : field === "x2"
+            ? "x2Column"
+            : field === "y2"
+              ? "y2Column"
+              : field === "color"
+                ? "colorColumn"
+                : field === "size"
+                  ? "sizeColumn"
+                  : field === "length"
+                    ? "lengthColumn"
+                    : field === "label"
+                      ? "labelColumn"
+                      : "facetColumn";
     const options = getColumnOptions(
       field,
       selectedCatalogEntry,
@@ -738,7 +1649,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               {activeTab === "data" && (
                 <div className="space-y-2">
                   <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Encodings</div>
-                  {(["y", "x", "color", "size", "facet"] as ChartFieldKey[]).map(renderEncodingField)}
+                  {getFieldOrder(selectedCatalogEntry, config.chartType).map(renderEncodingField)}
                   <div className="flex gap-1 pt-1">
                     <button onClick={() => setActiveTab("type")} className="flex-1 rounded border border-gray-100 py-0.5 text-[9px] text-gray-500 hover:bg-gray-50">← Type</button>
                     <button onClick={() => setActiveTab("options")} className="flex-1 rounded border border-gray-100 py-0.5 text-[9px] text-gray-500 hover:bg-gray-50">Options →</button>

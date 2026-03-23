@@ -23,11 +23,25 @@ describe("chartCatalog", () => {
     expect(getChartCatalogEntry(undefined, "bar")).toMatchObject({
       id: "vertical-bar",
     });
+
+    expect(getChartCatalogEntry(undefined, "spike")).toMatchObject({
+      id: "spike-map",
+    });
   });
 
-  it("includes supported and disabled catalog variants", () => {
-    expect(CHART_CATALOG.some((entry) => entry.supported)).toBe(true);
-    expect(CHART_CATALOG.some((entry) => !entry.supported)).toBe(true);
+  it("keeps all catalog variants enabled", () => {
+    expect(CHART_CATALOG.every((entry) => entry.supported)).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "stacked-bar")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "waffle-chart")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "waterfall-chart")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "treemap")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "grid-cartogram")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "link-chart")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "world-choropleth")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "dot-map")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "spike-map")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "arc-map")?.supported).toBe(true);
+    expect(CHART_CATALOG.find((entry) => entry.id === "sankey-diagram")?.supported).toBe(true);
   });
 
   it("groups representative charts by analytical task", () => {

@@ -1,5 +1,5 @@
 import { type MutableRefObject, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
-import { DAGNode } from "@/engine/types";
+import { DAGEdge, DAGNode } from "@/engine/types";
 import { CanvasFrame } from "@/types/canvas";
 import { useCanvasFrameInteractions } from "@/hooks/useCanvasFrameInteractions";
 import { useCanvasNodeInteractions } from "@/hooks/useCanvasNodeInteractions";
@@ -23,6 +23,7 @@ interface UseCanvasInteractionsParams {
   closeMenus: () => void;
   visibleNodes: Record<string, DAGNode>;
   nodes: Record<string, DAGNode>;
+  edges: DAGEdge[];
   nodePositions: Record<string, NodePosition>;
   nodeSizes: Record<string, NodeSize>;
   selectedNodeIds: string[];
@@ -72,7 +73,7 @@ interface UseCanvasInteractionsParams {
     b: { x: number; y: number; width: number; height: number },
     padding?: number
   ) => boolean;
-  addEdge: (fromNodeId: string, toNodeId: string) => unknown;
+  addEdge: (fromNodeId: string, toNodeId: string, toInputIndex?: number) => unknown;
   onMoveFrame: (frameId: string, x: number, y: number) => void;
   onNodeMove: (nodeId: string, x: number, y: number) => void;
   onNodeResize: (
@@ -90,6 +91,7 @@ export function useCanvasInteractions({
   closeMenus,
   visibleNodes,
   nodes,
+  edges,
   nodePositions,
   nodeSizes,
   selectedNodeIds,
@@ -164,6 +166,7 @@ export function useCanvasInteractions({
     closeMenus,
     visibleNodes,
     nodes,
+    edges,
     marqueeStart,
     setMarqueeStart,
     marqueeCurrent,

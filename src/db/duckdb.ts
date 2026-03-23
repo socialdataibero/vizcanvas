@@ -1,5 +1,7 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 import { ColumnInfo, QueryResult } from "@/types/nodes";
+import { applyColumnSemanticsToColumns } from "@/lib/columnSemantics";
+import { isGeospatialExtension, normalizeGeospatialObject } from "@/lib/geospatial";
 
 let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
@@ -123,11 +125,13 @@ export async function executeQuery(sql: string): Promise<QueryResult> {
   const connection = await getConnection();
   const result = await connection.query(sql);
 
-  const columns: ColumnInfo[] = result.schema.fields.map((field) => ({
-    name: field.name,
-    type: field.type.toString(),
-    nullable: field.nullable,
-  }));
+  const columns: ColumnInfo[] = applyColumnSemanticsToColumns(
+    result.schema.fields.map((field) => ({
+      name: field.name,
+      type: field.type.toString(),
+      nullable: field.nullable,
+    }))
+  );
 
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < result.numRows; i++) {
@@ -176,6 +180,22 @@ export async function loadFile(
   file: File,
   tableName: string
 ): Promise<{ columns: ColumnInfo[]; rowCount: number }> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+
+  if (isGeospatialExtension(ext)) {
+    let parsedContent: unknown;
+    try {
+      parsedContent = JSON.parse(await file.text());
+    } catch (error) {
+      throw new Error(
+        `Invalid ${ext?.toUpperCase()} file: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    const normalizedTable = normalizeGeospatialObject(parsedContent);
+    return importTableData(tableName, normalizedTable.rows, normalizedTable.columns);
+  }
+
   const database = await getDB();
   const connection = await getConnection();
 
@@ -186,7 +206,6 @@ export async function loadFile(
   console.log(`[DuckDB] Registered file: ${fileName} (${buffer.byteLength} bytes)`);
 
   // Determine file type and create table
-  const ext = file.name.split(".").pop()?.toLowerCase();
   let createSql: string;
 
   switch (ext) {
@@ -233,7 +252,7 @@ export async function getTableSchema(
       nullable: result.getChild("null")?.get(i) === "YES",
     });
   }
-  return columns;
+  return applyColumnSemanticsToColumns(columns);
 }
 
 export async function getTables(): Promise<string[]> {

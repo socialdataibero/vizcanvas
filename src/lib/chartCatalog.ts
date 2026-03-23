@@ -9,7 +9,7 @@ export type ChartGallerySection =
   | "MAPS"
   | "FLOW";
 
-export type ChartFieldKey = "x" | "y" | "color" | "size" | "facet";
+export type ChartFieldKey = "x" | "y" | "x2" | "y2" | "color" | "size" | "length" | "label" | "facet";
 export type ChartFieldRequirement = "required" | "optional";
 
 export interface ChartCatalogEntry {
@@ -80,7 +80,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "▤▤",
     section: "PART-TO-WHOLE",
     description: "Stacked segments showing part contribution per category.",
-    supported: false,
+    supported: true,
+    chartType: "stackedBar",
+    fields: { x: "required", y: "required", color: "required" },
   },
   {
     id: "temporal-histogram",
@@ -218,7 +220,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "▥▦",
     section: "PART-TO-WHOLE",
     description: "Nested rectangles for hierarchical part-to-whole structure.",
-    supported: false,
+    supported: true,
+    chartType: "treemap",
+    fields: { x: "required", y: "required", color: "optional" },
   },
   {
     id: "waffle-chart",
@@ -226,7 +230,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "▩▩",
     section: "PART-TO-WHOLE",
     description: "Part-to-whole shown as a grid of equal units.",
-    supported: false,
+    supported: true,
+    chartType: "waffle",
+    fields: { x: "required", y: "required", color: "optional" },
   },
   {
     id: "waterfall-chart",
@@ -234,7 +240,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "▂▅▃",
     section: "PART-TO-WHOLE",
     description: "Sequential increases and decreases to a final total.",
-    supported: false,
+    supported: true,
+    chartType: "waterfall",
+    fields: { x: "required", y: "required", color: "optional" },
   },
   {
     id: "arc-map",
@@ -242,7 +250,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "⌒⌒",
     section: "FLOW",
     description: "Curved connections between locations.",
-    supported: false,
+    supported: true,
+    chartType: "arc",
+    fields: { x: "required", y: "required", x2: "required", y2: "required", length: "optional", color: "optional" },
   },
   {
     id: "world-choropleth",
@@ -250,7 +260,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "▧▨",
     section: "MAPS",
     description: "Values encoded over geographic regions.",
-    supported: false,
+    supported: true,
+    chartType: "choropleth",
+    fields: { x: "required", y: "required" },
   },
   {
     id: "dot-map",
@@ -258,7 +270,19 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "◌◍",
     section: "MAPS",
     description: "Points or bubbles placed over geography.",
-    supported: false,
+    supported: true,
+    chartType: "geoPoint",
+    fields: { x: "required", y: "required", color: "optional", size: "optional" },
+  },
+  {
+    id: "spike-map",
+    label: "Spike map",
+    icon: "╽╽",
+    section: "MAPS",
+    description: "Vertical spikes over locations, sized by magnitude.",
+    supported: true,
+    chartType: "spike",
+    fields: { x: "required", y: "required", length: "required", color: "optional" },
   },
   {
     id: "grid-cartogram",
@@ -266,7 +290,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "⊞⊞",
     section: "MAPS",
     description: "Grid-based geographic cartogram.",
-    supported: false,
+    supported: true,
+    chartType: "grid",
+    fields: { x: "required", y: "required", color: "required", label: "optional" },
   },
   {
     id: "link-chart",
@@ -274,7 +300,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "⇢⇢",
     section: "FLOW",
     description: "Source-destination link visualization.",
-    supported: false,
+    supported: true,
+    chartType: "link",
+    fields: { x: "required", y: "required", x2: "required", y2: "required", color: "optional", label: "optional" },
   },
   {
     id: "sankey-diagram",
@@ -282,7 +310,9 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     icon: "⟿",
     section: "FLOW",
     description: "Flow thickness indicates quantity across steps.",
-    supported: false,
+    supported: true,
+    chartType: "sankey",
+    fields: { x: "required", y: "required", size: "required", color: "optional" },
   },
 ];
 
@@ -299,6 +329,17 @@ const FALLBACK_CATALOG_BY_TYPE: Partial<Record<ChartType, string>> = {
   area: "area-chart",
   box: "box-plot",
   heatmap: "heatmap",
+  stackedBar: "stacked-bar",
+  waffle: "waffle-chart",
+  waterfall: "waterfall-chart",
+  treemap: "treemap",
+  grid: "grid-cartogram",
+  link: "link-chart",
+  choropleth: "world-choropleth",
+  geoPoint: "dot-map",
+  spike: "spike-map",
+  arc: "arc-map",
+  sankey: "sankey-diagram",
 };
 
 export function getChartCatalogEntry(
