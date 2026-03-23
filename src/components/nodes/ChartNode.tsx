@@ -678,11 +678,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           className={`min-h-0 flex-shrink-0 overflow-hidden transition-[width,opacity,margin] duration-200 ease-out ${
             isSidebarCollapsed
               ? "w-0 border-transparent pr-0 opacity-0"
-              : "w-44 border-r border-gray-100 pr-2 opacity-100"
+              : "w-40 border-r border-gray-100 pr-2 opacity-100"
           }`}
           aria-hidden={isSidebarCollapsed}
         >
-          <div className="subtle-scrollbar h-full overflow-y-auto pr-1">
+          <div className="subtle-scrollbar h-full min-h-0 overflow-y-auto pr-1">
             <div className="space-y-2 pb-1">
               {/* TYPE TAB */}
               {activeTab === "type" && (
@@ -807,7 +807,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               </div>
             ) : (
               <div
-                className="chart-container min-h-[160px] overflow-hidden bg-white"
+                className="chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg border border-slate-100 bg-white p-2"
                 dangerouslySetInnerHTML={{ __html: chartMarkup }}
               />
             )}

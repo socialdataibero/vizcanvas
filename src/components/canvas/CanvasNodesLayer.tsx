@@ -52,10 +52,11 @@ export default function CanvasNodesLayer({
         const explicitSize = nodeSizes[id];
         const baseHeight = getNodeHeight(node.type);
         const explicitHeight = explicitSize?.height;
+        const defaultHeight = node.type === "chart" ? baseHeight : undefined;
         const resolvedSize = {
           width: explicitSize?.width ?? getNodeWidth(node.type),
-          minHeight: explicitHeight ? baseHeight : undefined,
-          height: explicitHeight,
+          minHeight: explicitHeight || defaultHeight ? baseHeight : undefined,
+          height: explicitHeight ?? defaultHeight,
         };
         return (
           <div

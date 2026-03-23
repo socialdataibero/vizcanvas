@@ -33,11 +33,11 @@ describe("canvas node sizing", () => {
   });
 
   it("uses node-specific dimensions and falls back for other node types", () => {
-    expect(getCanvasNodeWidth("chart")).toBe(460);
+    expect(getCanvasNodeWidth("chart")).toBe(540);
     expect(getCanvasNodeWidth("sql")).toBe(320);
     expect(getBaseCanvasNodeHeight("from")).toBe(405);
     expect(getBaseCanvasNodeHeight("group")).toBe(769);
-    expect(getCanvasNodeHeight("chart", "chart-1", {})).toBe(320);
+    expect(getCanvasNodeHeight("chart", "chart-1", {})).toBe(420);
     expect(getCanvasNodeHeight("from", "from-1", {})).toBe(405);
     expect(getCanvasNodeHeight("group", "group-1", {})).toBe(769);
     expect(getCanvasNodeHeight("sql", "sql-1", {})).toBe(485);

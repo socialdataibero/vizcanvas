@@ -3,7 +3,7 @@ import { CanvasFrame } from "@/types/canvas";
 import { NodeType, QueryResult } from "@/types/nodes";
 
 const CANVAS_NODE_WIDTH: Partial<Record<NodeType, number>> = {
-  chart: 460,
+  chart: 540,
 };
 
 const EMPTY_STATE_PLACEMENT_HEIGHT: Partial<Record<NodeType, number>> = {
@@ -81,7 +81,7 @@ export function getTablePreviewMinHeight(rows: number, hasColumnSummary = true):
 
 export function getBaseCanvasNodeHeight(nodeType: NodeType): number {
   if (nodeType === "chart") {
-    return 320;
+    return 420;
   }
 
   const spec = NODE_LAYOUT_SPECS[nodeType];
