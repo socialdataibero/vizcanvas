@@ -27,6 +27,21 @@ const NODE_HEADER_COLORS: Record<string, string> = {
 
 const RESIZE_DIRECTIONS: ResizeDirection[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 
+function formatNodeError(nodeType: string, error?: string) {
+  if (!error) return null;
+
+  const normalizedError = error.replace(/^Error:\s*/i, "").trim();
+
+  if (
+    nodeType === "sql" &&
+    normalizedError.includes('Connect an input table first. "SELECT * FROM input" only works when this SQL node has an upstream table.')
+  ) {
+    return 'Connect a table first. The alias "input" is only available when this SQL node has an upstream connection.';
+  }
+
+  return normalizedError;
+}
+
 interface Props {
   nodeType: string;
   nodeId: string;
@@ -190,6 +205,7 @@ export default function NodeShell({
   };
 
   const displayName = nodeName || `${label}_${nodeId.slice(0, 6)}`;
+  const displayError = formatNodeError(nodeType, error);
   const optionsMenuItems = buildNodeOptionsMenuItems({
     scope,
     onCopy: () => {
@@ -380,9 +396,9 @@ export default function NodeShell({
         </div>
 
         {/* Error message */}
-        {error && (
+        {displayError && (
           <div className="subtle-scrollbar border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 break-words max-h-[60px] overflow-y-auto">
-            {error.length > 200 ? error.slice(0, 200) + "..." : error}
+            {displayError.length > 200 ? displayError.slice(0, 200) + "..." : displayError}
           </div>
         )}
 

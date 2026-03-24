@@ -12,6 +12,11 @@ export const executeSql: NodeExecutor = async (
 
   let query = config.query;
   const upstreamIds = context.getUpstreamNodes(node.id);
+  const referencesFriendlyInput = /\binput\d*\b/i.test(query);
+
+  if (referencesFriendlyInput && upstreamIds.length === 0) {
+    throw new Error('Connect an input table first. "SELECT * FROM input" only works when this SQL node has an upstream table.');
+  }
 
   // Replace friendly aliases: "input" → first upstream CTE, "input1"/"input2" → by index
   if (upstreamIds.length > 0) {

@@ -35,24 +35,33 @@ export default function JSNodeBody({ node }: Props) {
   };
 
   return (
-    <div className="space-y-2 no-drag">
-      <div>
+    <div className="flex min-h-0 flex-col gap-2 no-drag">
+      <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">JavaScript (Experimental)</label>
         <textarea
           value={code}
           onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              handleRun();
+            }
+          }}
           rows={5}
-          className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs font-mono outline-none focus:border-indigo-400 resize-y"
+          className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs font-mono outline-none focus:border-orange-400 resize-y"
           spellCheck={false}
         />
       </div>
 
-      <button
-        onClick={handleRun}
-        className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700 w-full"
-      >
-        ▶ Run
-      </button>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        <button
+          onClick={handleRun}
+          className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700"
+        >
+          ▶ Run
+        </button>
+        <span className="text-[10px] text-gray-400">⌘+Enter</span>
+      </div>
 
       {output && (
         <pre className="rounded-md bg-gray-50 p-2 text-xs font-mono text-gray-700 max-h-[150px] overflow-auto whitespace-pre-wrap">
