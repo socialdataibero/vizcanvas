@@ -45,7 +45,7 @@ function getNodeBody(node: DAGNode, presentationMode = false, expandTablePreview
     case "chart": return <ChartNodeBody node={node} presentationMode={presentationMode} />;
     case "table": return presentationMode ? <PresentationNodeBody node={node} /> : <TableNodeBody node={node} expandTablePreview={expandTablePreview} />;
     case "distinct": return presentationMode ? <PresentationNodeBody node={node} /> : <DistinctNodeBody node={node} expandTablePreview={expandTablePreview} />;
-    case "javascript": return presentationMode ? <PresentationNodeBody node={node} /> : <JSNodeBody node={node} />;
+    case "javascript": return presentationMode ? <PresentationNodeBody node={node} /> : <JSNodeBody node={node} expandTablePreview={expandTablePreview} />;
     case "controls": return presentationMode ? <PresentationNodeBody node={node} /> : <ControlsNodeBody node={node} expandTablePreview={expandTablePreview} />;
     default: return <div className="text-xs text-gray-400">Unknown node type</div>;
   }

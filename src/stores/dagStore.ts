@@ -1,10 +1,11 @@
 import { createStore, useStore } from "@/lib/createStore";
 import { v4 as uuidv4 } from "uuid";
-import { ControlsConfig, FromConfig, GroupConfig, JoinConfig, NodeType, NodeConfig, QueryResult, SQLConfig } from "@/types/nodes";
+import { ColumnInfo, ControlsConfig, FromConfig, GroupConfig, JavaScriptConfig, JoinConfig, NodeType, NodeConfig, QueryResult, SQLConfig } from "@/types/nodes";
 import { DAGNode, DAGEdge, ExecutionContext } from "@/engine/types";
 import { topologicalSortRecord, getDownstreamNodes, getUpstreamNodes } from "@/engine/dag";
 import { getExecutor } from "@/engine/executor";
-import { executeQueryLimited } from "@/db/duckdb";
+import { executeQueryLimited, importTableData } from "@/db/duckdb";
+import { applyColumnSemanticsToColumns } from "@/lib/columnSemantics";
 import { dataStoreApi } from "@/stores/dataStore";
 
 interface DAGState {
@@ -63,6 +64,39 @@ function resetDirtySubgraph(nodeId: string, state: DAGState, configPatch: Partia
   };
 
   return nodes;
+}
+
+function inferJavaScriptColumnType(values: unknown[]): string {
+  const sample = values.find((value) => value !== null && value !== undefined);
+  if (sample === undefined) return "VARCHAR";
+  if (typeof sample === "boolean") return "BOOLEAN";
+  if (typeof sample === "number") return Number.isInteger(sample) ? "INTEGER" : "DOUBLE";
+  if (typeof sample === "string") return "VARCHAR";
+  return "JSON";
+}
+
+function normalizeJavaScriptRows(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    throw new Error("JavaScript nodes must return an array of objects.");
+  }
+
+  return value.map((row, index) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw new Error(`JavaScript row ${index + 1} is not an object.`);
+    }
+    return row as Record<string, unknown>;
+  });
+}
+
+function inferJavaScriptColumns(rows: Record<string, unknown>[]): ColumnInfo[] {
+  const columnNames = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  return applyColumnSemanticsToColumns(
+    columnNames.map((name) => ({
+      name,
+      type: inferJavaScriptColumnType(rows.map((row) => row[name])),
+      nullable: rows.some((row) => row[name] === null || row[name] === undefined),
+    }))
+  );
 }
 
 const dagStore = createStore<DAGState>((set, get) => ({
@@ -282,6 +316,49 @@ const dagStore = createStore<DAGState>((set, get) => ({
     }));
 
     try {
+      if (node.type === "javascript") {
+        if (upstreamIds.length === 0) {
+          throw new Error('Connect a table first. The variable "input" is only available when this JavaScript node has an upstream connection.');
+        }
+
+        const upstreamResult = get().nodes[upstreamIds[0]]?.result;
+        if (!upstreamResult) {
+          throw new Error("Upstream node has no results.");
+        }
+
+        const code = ((node.config as JavaScriptConfig).code || "").trim();
+        if (!code) {
+          throw new Error("No JavaScript code provided.");
+        }
+
+        // eslint-disable-next-line no-new-func
+        const fn = new Function("input", code);
+        const rawOutput = fn(upstreamResult.rows);
+        const rows = normalizeJavaScriptRows(rawOutput);
+        const columns = inferJavaScriptColumns(rows);
+        const tableName = `_node_${nodeId}_js`;
+        const imported = await importTableData(tableName, rows, columns);
+        const sql = `SELECT * FROM "${tableName}"`;
+
+        set((state) => ({
+          nodes: {
+            ...state.nodes,
+            [nodeId]: {
+              ...state.nodes[nodeId],
+              result: {
+                columns: imported.columns,
+                rows,
+                totalRows: rows.length,
+                sql,
+              },
+              status: "success" as const,
+              error: undefined,
+            },
+          },
+        }));
+        return;
+      }
+
       const executor = getExecutor(node.type);
       const context: ExecutionContext = {
         executeQuery: executeQueryLimited,
@@ -304,10 +381,10 @@ const dagStore = createStore<DAGState>((set, get) => ({
       }
 
       const { nodes, edges } = get();
-      const upstreamIds = getUpstreamNodes(nodeId, edges);
+      const executionUpstreamIds = getUpstreamNodes(nodeId, edges);
       const ctes: string[] = [];
 
-      for (const upId of upstreamIds) {
+      for (const upId of executionUpstreamIds) {
         const upNode = nodes[upId];
         if (upNode?.result?.sql) {
           ctes.push(`"_node_${upId}" AS (${upNode.result.sql})`);

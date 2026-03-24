@@ -7,35 +7,45 @@ import { useDagStore } from "@/stores/dagStore";
 
 interface Props {
   node: DAGNode;
+  expandTablePreview?: boolean;
 }
 
-export default function JSNodeBody({ node }: Props) {
+export default function JSNodeBody({ node, expandTablePreview = false }: Props) {
   const config = node.config as JavaScriptConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
-  const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
-  const upstreamNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
   const [code, setCode] = useState(config.code || "// input is available\nreturn input;");
   const [output, setOutput] = useState<string>("");
+  const maxPreviewChars = expandTablePreview ? 2000 : 500;
 
   useEffect(() => {
     setCode(config.code || "// input is available\nreturn input;");
   }, [config.code]);
 
+  useEffect(() => {
+    if (node.result) {
+      const serialized = JSON.stringify(node.result.rows, null, 2);
+      setOutput(
+        serialized.length > maxPreviewChars
+          ? `${serialized.slice(0, maxPreviewChars)}\n...`
+          : serialized
+      );
+      return;
+    }
+
+    if (node.error) {
+      setOutput(node.error);
+      return;
+    }
+
+    setOutput("");
+  }, [maxPreviewChars, node.error, node.result]);
+
   const handleRun = () => {
     updateNodeConfig(node.id, { code } as Partial<JavaScriptConfig>);
-    try {
-      const input = upstreamNode?.result?.rows || [];
-      // eslint-disable-next-line no-new-func
-      const fn = new Function("input", code);
-      const result = fn(input);
-      setOutput(JSON.stringify(result, null, 2).slice(0, 500));
-    } catch (err) {
-      setOutput(`Error: ${err}`);
-    }
   };
 
   return (
-    <div className="flex min-h-0 flex-col gap-2 no-drag">
+    <div className={`flex min-h-0 flex-col gap-2 no-drag ${expandTablePreview ? "h-full" : ""}`}>
       <div className="flex-shrink-0">
         <label className="text-[10px] font-medium text-gray-500 uppercase">JavaScript (Experimental)</label>
         <textarea
@@ -64,7 +74,9 @@ export default function JSNodeBody({ node }: Props) {
       </div>
 
       {output && (
-        <pre className="rounded-md bg-gray-50 p-2 text-xs font-mono text-gray-700 max-h-[150px] overflow-auto whitespace-pre-wrap">
+        <pre className={`subtle-scrollbar rounded-md p-2 text-xs font-mono text-gray-700 overflow-auto whitespace-pre-wrap ${
+          expandTablePreview ? "min-h-0 flex-1" : "max-h-[150px]"
+        } ${node.error ? "border border-red-200 bg-red-50 text-red-600" : "bg-gray-50"}`}>
           {output}
         </pre>
       )}
