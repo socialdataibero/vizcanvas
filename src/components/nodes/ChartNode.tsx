@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type * as PlotModule from "@observablehq/plot";
+import type { GeoGeometryObjects } from "d3";
 import { FiChevronsLeft, FiChevronsRight } from "react-icons/fi";
 import { LuChartColumnBig } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
@@ -39,6 +40,14 @@ function getCompactSwatchLegendOptions(plotWidth: number) {
     legend: true,
     swatchSize: 8,
     width: Math.max(220, plotWidth - 8),
+  };
+}
+
+function getQuantitativeLegendOptions(plotWidth: number, label: string) {
+  return {
+    legend: true,
+    width: Math.max(180, Math.min(280, Math.round(plotWidth * 0.34))),
+    label,
   };
 }
 
@@ -170,14 +179,35 @@ function getFieldLabel(
 ): string {
   switch (field) {
     case "x":
-      if (entry?.id === "world-choropleth") return "Country";
-      if (entry?.id === "dot-map") return "Longitude";
+      if (entry?.id === "world-choropleth") return "Feature label";
+      if (entry?.id === "spike-map") return "Feature label";
+      if (entry?.id === "dot-map") return "Feature label";
+      if (entry?.id === "grid-cartogram") return "Feature label";
       if (entry?.id === "arc-map") return "Origin Lon";
       if (entry?.id === "sankey-diagram") return "Source";
       if (entry?.id === "waterfall-chart") return "Step";
       if (entry?.id === "treemap") return "Item";
-      if (entry?.id === "grid-cartogram") return "Column";
       if (entry?.id === "link-chart") return "Start X";
+      if (
+        entry?.id === "line-chart" ||
+        entry?.id === "multi-series-line" ||
+        entry?.id === "area-chart" ||
+        entry?.id === "temporal-histogram"
+      ) {
+        return "Time";
+      }
+      if (
+        entry?.id === "vertical-bar" ||
+        entry?.id === "dot-comparison" ||
+        entry?.id === "box-plot" ||
+        entry?.id === "waffle-chart" ||
+        entry?.id === "stacked-bar"
+      ) {
+        return "Category";
+      }
+      if (entry?.id === "barcode-strip-plot" || entry?.id === "beeswarm" || entry?.id === "histogram" || entry?.id === "faceted-histogram") {
+        return "Value";
+      }
       if (entry?.id === "waffle-chart" || entry?.id === "stacked-bar") return "Category";
       if (entry?.id === "horizontal-bar") return "Value";
       if (entry?.id === "grouped-bar") return "Series";
@@ -185,14 +215,24 @@ function getFieldLabel(
       return chartType === "histogram" ? "Value" : "X";
     case "y":
       if (entry?.id === "world-choropleth") return "Value";
-      if (entry?.id === "dot-map") return "Latitude";
       if (entry?.id === "arc-map") return "Origin Lat";
-      if (entry?.id === "spike-map") return "Latitude";
       if (entry?.id === "sankey-diagram") return "Target";
       if (entry?.id === "waterfall-chart") return "Change";
-      if (entry?.id === "treemap" || entry?.id === "waffle-chart" || entry?.id === "stacked-bar" || entry?.id === "grouped-bar") {
+      if (
+        entry?.id === "treemap" ||
+        entry?.id === "waffle-chart" ||
+        entry?.id === "stacked-bar" ||
+        entry?.id === "grouped-bar" ||
+        entry?.id === "vertical-bar" ||
+        entry?.id === "dot-comparison" ||
+        entry?.id === "box-plot" ||
+        entry?.id === "line-chart" ||
+        entry?.id === "multi-series-line" ||
+        entry?.id === "area-chart"
+      ) {
         return "Value";
       }
+      if (entry?.id === "heatmap") return "Row";
       if (entry?.id === "grid-cartogram") return "Row";
       if (entry?.id === "link-chart") return "Start Y";
       if (entry?.id === "horizontal-bar") return "Category";
@@ -206,20 +246,20 @@ function getFieldLabel(
       if (entry?.id === "link-chart") return "End Y";
       return "Y2";
     case "color":
-      if (entry?.id === "dot-map") return "Color";
+      if (entry?.id === "dot-map") return "Group";
       if (entry?.id === "arc-map") return "Color";
-      if (entry?.id === "spike-map") return "Color";
+      if (entry?.id === "spike-map") return "Group";
       if (entry?.id === "sankey-diagram") return "Group";
       if (entry?.id === "stacked-bar") return "Segment";
       if (entry?.id === "treemap") return "Group";
-      if (entry?.id === "grid-cartogram") return "Value";
+      if (entry?.id === "grid-cartogram" || entry?.id === "heatmap") return "Value";
       if (entry?.id === "link-chart") return "Color";
       if (entry?.id === "grouped-bar" || entry?.id === "multi-series-line") {
         return "Series";
       }
       return "Color";
     case "size":
-      if (entry?.id === "dot-map") return "Size";
+      if (entry?.id === "dot-map") return "Magnitude";
       if (entry?.id === "sankey-diagram") return "Value";
       return "Size";
     case "length":
@@ -232,6 +272,7 @@ function getFieldLabel(
       return "Label";
     case "facet":
       if (entry?.id === "grouped-bar") return "Group";
+      if (entry?.id === "faceted-histogram") return "Group";
       return "Facet";
   }
 }
@@ -259,7 +300,7 @@ function getFieldOrder(
       return ["x", "y", "x2", "y2", "length", "color"];
     case "grid-cartogram":
     case "grid":
-      return ["x", "y", "color", "label"];
+      return ["x", "color", "label"];
     case "link-chart":
     case "link":
       return ["x", "y", "x2", "y2", "label", "color"];
@@ -332,37 +373,66 @@ function getColumnOptions(
   numericColumns: ColumnInfo[]
 ) {
   const numericOrAll = numericColumns.length > 0 ? numericColumns : allColumns;
+  const categoricalColumns = allColumns.filter(
+    (column) =>
+      !isNumericType(column.type) &&
+      column.role !== "geometry" &&
+      column.role !== "latitude" &&
+      column.role !== "longitude"
+  );
+  const categoricalOrAll = categoricalColumns.length > 0 ? categoricalColumns : allColumns;
+  const temporalColumns = allColumns.filter(
+    (column) => /date|time|timestamp/i.test(column.type) || /date|time|year|month|day/i.test(column.name)
+  );
+  const temporalOrAll = temporalColumns.length > 0 ? temporalColumns : allColumns;
+  const geoLongitudeColumns = allColumns.filter((column) => column.role === "longitude");
+  const geoLatitudeColumns = allColumns.filter((column) => column.role === "latitude");
+  const geoXColumns = geoLongitudeColumns.length > 0 ? geoLongitudeColumns : numericOrAll;
+  const geoYColumns = geoLatitudeColumns.length > 0 ? geoLatitudeColumns : numericOrAll;
 
   switch (entry?.id ?? chartType) {
     case "world-choropleth":
       return field === "y" ? numericOrAll : allColumns;
     case "dot-map":
-      if (field === "x" || field === "y" || field === "size") return numericOrAll;
-      return allColumns;
+      if (field === "x") return allColumns;
+      if (field === "size") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
+      return [];
     case "spike-map":
     case "spike":
-      if (field === "x" || field === "y" || field === "length") return numericOrAll;
-      return allColumns;
+      if (field === "x") return allColumns;
+      if (field === "length") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
+      return [];
     case "arc-map":
     case "arc":
-      if (field === "x" || field === "y" || field === "x2" || field === "y2" || field === "length") {
-        return numericOrAll;
-      }
+      if (field === "x" || field === "x2") return geoXColumns;
+      if (field === "y" || field === "y2") return geoYColumns;
+      if (field === "length") return numericOrAll;
       return allColumns;
     case "sankey-diagram":
       if (field === "size") return numericOrAll;
       return allColumns;
     case "stacked-bar":
       if (field === "y") return numericOrAll;
+      if (field === "x" || field === "color") return categoricalOrAll;
       return allColumns;
     case "waffle-chart":
+      if (field === "y") return numericOrAll;
+      if (field === "x" || field === "color") return categoricalOrAll;
+      return allColumns;
     case "waterfall-chart":
+      if (field === "y") return numericOrAll;
+      if (field === "x" || field === "color") return categoricalOrAll;
+      return allColumns;
     case "treemap":
       if (field === "y") return numericOrAll;
+      if (field === "x" || field === "color") return categoricalOrAll;
       return allColumns;
     case "grid-cartogram":
       if (field === "color") return numericOrAll;
-      return allColumns;
+      if (field === "x" || field === "label") return allColumns;
+      return [];
     case "link-chart":
     case "link":
       if (field === "x" || field === "y" || field === "x2" || field === "y2") {
@@ -373,25 +443,50 @@ function getColumnOptions(
       return field === "x" ? numericOrAll : allColumns;
     case "grouped-bar":
       if (field === "y") return numericOrAll;
+      if (field === "color" || field === "facet") return categoricalOrAll;
       return allColumns;
     case "histogram":
+      return field === "x" ? allColumns : [];
     case "temporal-histogram":
+      return field === "x" ? temporalOrAll : [];
     case "faceted-histogram":
-      return field === "x" || field === "facet" || field === "color" ? allColumns : [];
+      if (field === "x") return numericOrAll;
+      if (field === "facet" || field === "color") return allColumns;
+      return [];
+    case "line-chart":
+    case "line":
+    case "area-chart":
+    case "area":
+      if (field === "x") return temporalOrAll;
+      if (field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
+      return allColumns;
+    case "multi-series-line":
+      if (field === "x") return temporalOrAll;
+      if (field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
+      return allColumns;
     case "bubble-chart":
       if (field === "size" || field === "x" || field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
       return allColumns;
     case "scatter":
     case "scatterplot":
     case "color-scatterplot":
       if (field === "x" || field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
       return allColumns;
     case "box":
     case "box-plot":
-      return field === "y" ? numericOrAll : allColumns;
+      if (field === "y") return numericOrAll;
+      if (field === "x") return categoricalOrAll;
+      return allColumns;
     case "barcode-strip-plot":
     case "beeswarm":
       return field === "x" ? numericOrAll : allColumns;
+    case "heatmap":
+      if (field === "color") return numericOrAll;
+      return allColumns;
     default:
       if (field === "y" || field === "size") return numericOrAll;
       return allColumns;
@@ -567,10 +662,19 @@ type GeometryFeatureDatum = {
   properties: {
     label: string;
     value: number | null;
+    group?: string | null;
   };
   geometry: {
     type: string;
   } & Record<string, unknown>;
+};
+
+type CartogramCellDatum = {
+  gridX: number;
+  gridY: number;
+  label: string;
+  value: number;
+  textLabel: string;
 };
 
 function buildGeometryFeatures(
@@ -595,6 +699,72 @@ function buildGeometryFeatures(
       geometry,
     }];
   });
+}
+
+async function buildCartogramCells(
+  data: Record<string, unknown>[],
+  geometryColumn: string,
+  featureLabelColumn: string,
+  valueColumn: string,
+  textLabelColumn?: string
+): Promise<CartogramCellDatum[]> {
+  const d3 = await import("d3");
+  const features = data.flatMap((row) => {
+    const geometry = parseGeometryValue(row[geometryColumn]);
+    const value = toFiniteNumber(row[valueColumn]);
+    const featureLabel = row[featureLabelColumn];
+    if (!geometry || value === null || featureLabel === undefined || featureLabel === null) {
+      return [];
+    }
+
+    const [longitude, latitude] = d3.geoCentroid(geometry as GeoGeometryObjects);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      return [];
+    }
+
+    return [{
+      longitude,
+      latitude,
+      label: String(featureLabel),
+      value,
+      textLabel:
+        textLabelColumn && row[textLabelColumn] !== undefined && row[textLabelColumn] !== null
+          ? String(row[textLabelColumn])
+          : String(featureLabel),
+    }];
+  });
+
+  if (features.length === 0) {
+    return [];
+  }
+
+  const longitudes = features.map((feature) => feature.longitude);
+  const latitudes = features.map((feature) => feature.latitude);
+  const longitudeSpan = Math.max(...longitudes) - Math.min(...longitudes);
+  const latitudeSpan = Math.max(...latitudes) - Math.min(...latitudes);
+  const aspectRatio = longitudeSpan > 0 && latitudeSpan > 0
+    ? Math.min(2.4, Math.max(0.75, longitudeSpan / latitudeSpan))
+    : 1;
+  const rowCount = Math.max(1, Math.round(Math.sqrt(features.length / aspectRatio)));
+  const rows: typeof features[] = Array.from({ length: rowCount }, () => []);
+
+  const northToSouth = [...features].sort((left, right) => right.latitude - left.latitude);
+  northToSouth.forEach((feature, index) => {
+    const rowIndex = Math.min(rowCount - 1, Math.floor(index * rowCount / northToSouth.length));
+    rows[rowIndex].push(feature);
+  });
+
+  return rows.flatMap((row, rowIndex) =>
+    row
+      .sort((left, right) => left.longitude - right.longitude)
+      .map((feature, columnIndex) => ({
+        gridX: columnIndex,
+        gridY: rowIndex,
+        label: feature.label,
+        value: feature.value,
+        textLabel: feature.textLabel,
+      }))
+  );
 }
 
 async function buildSankeyData(
@@ -1102,122 +1272,206 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               plotOptions.marginRight = 8;
               plotOptions.marginBottom = 8;
               plotOptions.marginLeft = 8;
-              plotOptions.color = { legend: true, scheme: "YlGnBu" };
+              plotOptions.color = {
+                type: "quantile",
+                n: 9,
+                scheme: "blues",
+                ...getQuantitativeLegendOptions(plotSize.width, yColumn),
+              };
 
-              if (geometryColumn) {
-                const features = buildGeometryFeatures(
-                  data as Record<string, unknown>[],
-                  geometryColumn,
-                  xColumn,
-                  yColumn
-                );
-
-                if (features.length > 0) {
-                  plotOptions.projection = {
-                    type: "mercator",
-                    domain: {
-                      type: "FeatureCollection",
-                      features,
-                    },
-                  };
-                  marks.push(
-                    Plot.geo(features, {
-                      fill: (feature: GeometryFeatureDatum) => feature.properties.value,
-                      stroke: "#ffffff",
-                      strokeWidth: 0.5,
-                      title: (feature: GeometryFeatureDatum) =>
-                        feature.properties.value === null
-                          ? feature.properties.label
-                          : `${feature.properties.label}: ${feature.properties.value}`,
-                    } as Record<string, unknown>)
-                  );
-                  break;
-                }
+              if (!geometryColumn) {
+                throw new Error("Connect a GeoJSON or TopoJSON table to render this choropleth.");
               }
 
-              const { countries, land } = await loadWorldAtlasFeatures();
-              const valueLookup = buildCountryValueLookup(data as Record<string, unknown>[], xColumn, yColumn);
-              plotOptions.projection = "equal-earth";
-              marks.push(
-                Plot.geo(land, {
-                  fill: "#f8fafc",
-                  stroke: "#cbd5e1",
-                } as Record<string, unknown>)
+              const features = buildGeometryFeatures(
+                data as Record<string, unknown>[],
+                geometryColumn,
+                xColumn,
+                yColumn
               );
+
+              if (features.length === 0) {
+                throw new Error("The connected geospatial table does not contain valid geometries.");
+              }
+
+              plotOptions.projection = {
+                type: "mercator",
+                domain: {
+                  type: "FeatureCollection",
+                  features,
+                },
+              };
               marks.push(
-                Plot.geo(countries, {
-                  fill: (feature: { properties?: { name?: string } }) =>
-                    valueLookup.get(normalizeGeoLookupKey(feature.properties?.name)),
+                Plot.geo(features, {
+                  fill: (feature: GeometryFeatureDatum) => feature.properties.value,
                   stroke: "#ffffff",
-                  strokeWidth: 0.5,
-                  title: (feature: { properties?: { name?: string } }) => {
-                    const name = feature.properties?.name ?? "Unknown";
-                    const value = valueLookup.get(normalizeGeoLookupKey(name));
-                    return value === undefined ? name : `${name}: ${value}`;
-                  },
+                  strokeWidth: 0.8,
+                  tip: true,
+                  title: (feature: GeometryFeatureDatum) =>
+                    feature.properties.value === null
+                      ? feature.properties.label
+                      : `${feature.properties.label}: ${feature.properties.value}`,
                 } as Record<string, unknown>)
               );
-              marks.push(Plot.sphere());
             }
             break;
           case "dot-map":
-            if (xColumn && yColumn) {
-              const { land } = await loadWorldAtlasFeatures();
-              showColorLegend = Boolean(colorColumn);
+            if (xColumn) {
               showGrid = false;
-              plotOptions.projection = "equal-earth";
               plotOptions.marginTop = 8;
               plotOptions.marginRight = 8;
               plotOptions.marginBottom = 8;
               plotOptions.marginLeft = 8;
+
+              if (!geometryColumn) {
+                throw new Error("Connect a GeoJSON or TopoJSON table to render this bubble map.");
+              }
+
+              const bubbleFeatures = (data as Record<string, unknown>[]).flatMap((row) => {
+                const geometry = parseGeometryValue(row[geometryColumn]);
+                if (!geometry) return [];
+
+                return [{
+                  type: "Feature" as const,
+                  properties: {
+                    label:
+                      row[xColumn] === undefined || row[xColumn] === null
+                        ? "Unknown"
+                        : String(row[xColumn]),
+                    value: sizeColumn ? toFiniteNumber(row[sizeColumn]) : null,
+                    group:
+                      colorColumn && row[colorColumn] !== undefined && row[colorColumn] !== null
+                        ? String(row[colorColumn])
+                        : null,
+                  },
+                  geometry,
+                }];
+              });
+
+              if (bubbleFeatures.length === 0) {
+                throw new Error("The connected geospatial table does not contain valid geometries.");
+              }
+
+              plotOptions.projection = {
+                type: "mercator",
+                domain: {
+                  type: "FeatureCollection",
+                  features: bubbleFeatures,
+                },
+              };
+              showColorLegend = Boolean(colorColumn);
+              if (colorColumn) {
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
-                Plot.geo(land, {
+                Plot.geo(bubbleFeatures, {
                   fill: "#f8fafc",
-                  stroke: "#cbd5e1",
+                  stroke: "#e2e8f0",
+                  strokeWidth: 0.8,
                 } as Record<string, unknown>)
               );
               marks.push(
-                Plot.dot(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn || BASE_CHART_COLOR,
-                  r: sizeColumn || 3,
-                  fillOpacity: 0.7,
-                } as Record<string, unknown>)
+                Plot.dot(
+                  bubbleFeatures,
+                  Plot.geoCentroid({
+                    r: sizeColumn
+                      ? (feature: GeometryFeatureDatum) => feature.properties.value ?? 0
+                      : 5,
+                    fill: colorColumn
+                      ? (feature: GeometryFeatureDatum) => feature.properties.group ?? BASE_CHART_COLOR
+                      : BASE_CHART_COLOR,
+                    stroke: "#ffffff",
+                    strokeWidth: 1,
+                    fillOpacity: 0.75,
+                    tip: true,
+                    title: (feature: GeometryFeatureDatum) =>
+                      feature.properties.value === null
+                        ? feature.properties.label
+                        : `${feature.properties.label}: ${feature.properties.value}`,
+                  } as Record<string, unknown>)
+                )
               );
-              marks.push(Plot.sphere());
             }
             break;
           case "spike-map":
           case "spike":
-            if (xColumn && yColumn && lengthColumn) {
-              const { land } = await loadWorldAtlasFeatures();
-              showColorLegend = Boolean(colorColumn);
+            if (xColumn && lengthColumn) {
               showGrid = false;
-              plotOptions.projection = "equal-earth";
               plotOptions.marginTop = 8;
               plotOptions.marginRight = 8;
               plotOptions.marginBottom = 8;
               plotOptions.marginLeft = 8;
+
+              if (!geometryColumn) {
+                throw new Error("Connect a GeoJSON or TopoJSON table to render this spike map.");
+              }
+
+              const spikeFeatures = (data as Record<string, unknown>[]).flatMap((row) => {
+                const geometry = parseGeometryValue(row[geometryColumn]);
+                const value = toFiniteNumber(row[lengthColumn]);
+                if (!geometry || value === null) return [];
+
+                return [{
+                  type: "Feature" as const,
+                  properties: {
+                    label:
+                      row[xColumn] === undefined || row[xColumn] === null
+                        ? "Unknown"
+                        : String(row[xColumn]),
+                    value,
+                    group:
+                      colorColumn && row[colorColumn] !== undefined && row[colorColumn] !== null
+                        ? String(row[colorColumn])
+                        : null,
+                  },
+                  geometry,
+                }];
+              });
+
+              if (spikeFeatures.length === 0) {
+                throw new Error("The connected geospatial table does not contain valid geometries.");
+              }
+
+              plotOptions.projection = {
+                type: "mercator",
+                domain: {
+                  type: "FeatureCollection",
+                  features: spikeFeatures,
+                },
+              };
+              showColorLegend = Boolean(colorColumn);
+              if (colorColumn) {
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
-                Plot.geo(land, {
+                Plot.geo(spikeFeatures, {
                   fill: "#f8fafc",
-                  stroke: "#cbd5e1",
+                  stroke: "#e2e8f0",
+                  strokeWidth: 0.8,
                 } as Record<string, unknown>)
               );
               marks.push(
-                Plot.vector(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  length: lengthColumn,
-                  rotate: 180,
-                  anchor: "start",
-                  stroke: colorColumn || BASE_CHART_COLOR,
-                  strokeWidth: 1.5,
-                  strokeOpacity: 0.8,
-                } as Record<string, unknown>)
+                Plot.spike(
+                  spikeFeatures,
+                  Plot.geoCentroid({
+                    length: (feature: GeometryFeatureDatum) => feature.properties.value ?? 0,
+                    stroke: colorColumn
+                      ? (feature: GeometryFeatureDatum) => feature.properties.group ?? BASE_CHART_COLOR
+                      : BASE_CHART_COLOR,
+                    fill: colorColumn
+                      ? (feature: GeometryFeatureDatum) => feature.properties.group ?? BASE_CHART_COLOR
+                      : BASE_CHART_COLOR,
+                    fillOpacity: 0.22,
+                    strokeWidth: 1.5,
+                    anchor: "start",
+                    tip: true,
+                    title: (feature: GeometryFeatureDatum) =>
+                      feature.properties.value === null
+                        ? feature.properties.label
+                        : `${feature.properties.label}: ${feature.properties.value}`,
+                  } as Record<string, unknown>)
+                )
               );
-              marks.push(Plot.sphere());
             }
             break;
           case "arc-map":
@@ -1328,29 +1582,57 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             }
             break;
           case "grid-cartogram":
-            if (xColumn && yColumn && colorColumn) {
+            if (xColumn && colorColumn) {
               showColorLegend = true;
               showGrid = false;
               plotOptions.axis = null;
+              plotOptions.color = {
+                type: "quantile",
+                n: 9,
+                scheme: "blues",
+                ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
+              };
+              if (!geometryColumn) {
+                throw new Error("Connect a GeoJSON or TopoJSON table to render this cartogram.");
+              }
+
+              const cartogramCells = await buildCartogramCells(
+                data as Record<string, unknown>[],
+                geometryColumn,
+                xColumn,
+                colorColumn,
+                labelColumn
+              );
+
+              if (cartogramCells.length === 0) {
+                throw new Error("The connected geospatial table does not contain valid geometries.");
+              }
+
               marks.push(
-                Plot.cell(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn,
+                Plot.cell(cartogramCells, {
+                  x: "gridX",
+                  y: "gridY",
+                  fill: "value",
                   inset: 2,
+                  stroke: "#ffffff",
+                  strokeWidth: 1,
+                  tip: true,
+                  title: (cell: CartogramCellDatum) => `${cell.label}: ${cell.value}`,
                 } as Record<string, unknown>)
               );
-              if (labelColumn) {
-                marks.push(
-                  Plot.text(data, {
-                    x: xColumn,
-                    y: yColumn,
-                    text: labelColumn,
-                    fontSize: 10,
-                    fontWeight: 600,
-                  } as Record<string, unknown>)
-                );
-              }
+              marks.push(
+                Plot.text(cartogramCells, {
+                  x: "gridX",
+                  y: "gridY",
+                  text: (cell: CartogramCellDatum) => cell.textLabel,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  lineWidth: 8,
+                  textAnchor: "middle",
+                  lineAnchor: "middle",
+                  fill: "#0f172a",
+                } as Record<string, unknown>)
+              );
             }
             break;
           case "link-chart":
@@ -1562,6 +1844,34 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const allCols = columns;
   const chartReady = isChartReady(config, selectedCatalogEntry);
   const setupMessage = getChartSetupMessage(config, selectedCatalogEntry);
+  const isChoropleth = selectedCatalogEntry?.id === "world-choropleth";
+  const isBubbleMap = selectedCatalogEntry?.id === "dot-map";
+  const isSpikeMap = selectedCatalogEntry?.id === "spike-map";
+  const isCartogram = selectedCatalogEntry?.id === "grid-cartogram";
+  const choroplethGuidance =
+    isChoropleth && data.length > 0 && !geometryColumn
+      ? "Connect a GeoJSON or TopoJSON table to render this choropleth."
+      : isChoropleth && chartError.includes("valid geometries")
+        ? "The connected geospatial table does not contain valid geometries."
+        : "";
+  const bubbleMapGuidance =
+    isBubbleMap && data.length > 0 && !geometryColumn
+      ? "Connect a GeoJSON or TopoJSON table to render this bubble map."
+      : isBubbleMap && chartError.includes("valid geometries")
+        ? "The connected geospatial table does not contain valid geometries."
+        : "";
+  const spikeMapGuidance =
+    isSpikeMap && data.length > 0 && !geometryColumn
+      ? "Connect a GeoJSON or TopoJSON table to render this spike map."
+      : isSpikeMap && chartError.includes("valid geometries")
+        ? "The connected geospatial table does not contain valid geometries."
+        : "";
+  const cartogramGuidance =
+    isCartogram && data.length > 0 && !geometryColumn
+      ? "Connect a GeoJSON or TopoJSON table to render this cartogram."
+      : isCartogram && chartError.includes("valid geometries")
+        ? "The connected geospatial table does not contain valid geometries."
+        : "";
 
   const updateChartField = (
     field: keyof Pick<
@@ -1665,6 +1975,14 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         <div ref={previewRef} className="flex-1 min-h-[220px] min-w-0">
           {data.length === 0 ? (
             presentationEmptyState("No data source", "Connect data to render this chart.")
+          ) : choroplethGuidance ? (
+            presentationEmptyState("Geospatial source required", choroplethGuidance)
+          ) : bubbleMapGuidance ? (
+            presentationEmptyState("Geospatial source required", bubbleMapGuidance)
+          ) : spikeMapGuidance ? (
+            presentationEmptyState("Geospatial source required", spikeMapGuidance)
+          ) : cartogramGuidance ? (
+            presentationEmptyState("Geospatial source required", cartogramGuidance)
           ) : !chartReady ? (
             presentationEmptyState("Chart not configured", setupMessage)
           ) : chartError ? (
@@ -1828,6 +2146,34 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               <div className="flex flex-col items-center justify-center gap-2 h-40 text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
                 <LuChartColumnBig className="h-8 w-8" />
                 <span>Connect a data source</span>
+              </div>
+            ) : choroplethGuidance ? (
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
+                  <LuChartColumnBig className="h-4 w-4" />
+                  <span>{choroplethGuidance}</span>
+                </div>
+              </div>
+            ) : bubbleMapGuidance ? (
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
+                  <LuChartColumnBig className="h-4 w-4" />
+                  <span>{bubbleMapGuidance}</span>
+                </div>
+              </div>
+            ) : spikeMapGuidance ? (
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
+                  <LuChartColumnBig className="h-4 w-4" />
+                  <span>{spikeMapGuidance}</span>
+                </div>
+              </div>
+            ) : cartogramGuidance ? (
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
+                  <LuChartColumnBig className="h-4 w-4" />
+                  <span>{cartogramGuidance}</span>
+                </div>
               </div>
             ) : !chartReady ? (
               <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">

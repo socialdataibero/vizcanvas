@@ -273,7 +273,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     description: "Points or bubbles placed over geography.",
     supported: true,
     chartType: "geoPoint",
-    fields: { x: "required", y: "required", color: "optional", size: "optional" },
+    fields: { x: "required", size: "optional", color: "optional" },
   },
   {
     id: "spike-map",
@@ -283,7 +283,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     description: "Vertical spikes over locations, sized by magnitude.",
     supported: true,
     chartType: "spike",
-    fields: { x: "required", y: "required", length: "required", color: "optional" },
+    fields: { x: "required", length: "required", color: "optional" },
   },
   {
     id: "grid-cartogram",
@@ -293,7 +293,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     description: "Grid-based geographic cartogram.",
     supported: true,
     chartType: "grid",
-    fields: { x: "required", y: "required", color: "required", label: "optional" },
+    fields: { x: "required", color: "required", label: "optional" },
   },
   {
     id: "link-chart",
