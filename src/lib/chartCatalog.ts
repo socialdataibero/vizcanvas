@@ -290,10 +290,10 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     label: "Cartogram",
     iconName: "ChartCartogram",
     section: "MAPS",
-    description: "Grid-based geographic cartogram.",
+    description: "Grid choropleth with explicit X/Y tile coordinates.",
     supported: true,
     chartType: "grid",
-    fields: { x: "required", color: "required", label: "optional" },
+    fields: { x: "required", y: "required", color: "required", label: "optional" },
   },
   {
     id: "link-chart",

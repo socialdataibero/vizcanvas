@@ -115,16 +115,19 @@ describe("POST /api/ai", () => {
       },
     });
     expect(anthropicCtorMock).toHaveBeenCalledWith({ apiKey: "test-key" });
-    expect(createMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: "claude-sonnet-4-6",
-        tool_choice: {
-          type: "tool",
-          name: AI_GRAPH_TOOL_NAME,
-          disable_parallel_tool_use: true,
-        },
-      })
+    const createCall = createMessageMock.mock.calls[0]?.[0];
+    expect(createCall).toMatchObject({
+      model: "claude-sonnet-4-6",
+      tool_choice: {
+        type: "tool",
+        name: AI_GRAPH_TOOL_NAME,
+        disable_parallel_tool_use: true,
+      },
+    });
+    expect(createCall?.system).toContain(
+      "For spike maps, set xColumn to the feature label or region key and lengthColumn to the numeric metric."
     );
+    expect(JSON.stringify(createCall?.tools?.[0])).toContain("chart {chartType,chartCatalogId,xColumn,yColumn");
   });
 
   it("falls back to the first text block when the model does not return a plan summary", async () => {

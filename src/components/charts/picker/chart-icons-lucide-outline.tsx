@@ -1,20 +1,59 @@
 import * as React from "react";
-import { Icon, type IconNode, type LucideProps } from "lucide-react";
 
+type IconElementName = keyof React.JSX.IntrinsicElements;
 type LooseIconNode = ReadonlyArray<
-  readonly [elementName: IconNode[number][0], attrs: Record<string, string | number>]
+  readonly [elementName: IconElementName, attrs: Record<string, string | number>]
 >;
 
+export type ChartIconProps = Omit<React.ComponentPropsWithoutRef<"svg">, "strokeWidth"> & {
+  size?: number | string;
+  strokeWidth?: number | string;
+  absoluteStrokeWidth?: boolean;
+};
+
 const createChartIcon = (name: string, iconNode: LooseIconNode) => {
-  const Component = React.forwardRef<SVGSVGElement, LucideProps>((props, ref) => (
-    <Icon
-      ref={ref}
-      iconNode={iconNode as unknown as IconNode}
-      strokeWidth={1.9}
-      absoluteStrokeWidth
-      {...props}
-    />
-  ));
+  const Component = React.forwardRef<SVGSVGElement, ChartIconProps>(
+    (
+      {
+        size = 24,
+        color = "currentColor",
+        strokeWidth = 1.9,
+        absoluteStrokeWidth = true,
+        children,
+        ...props
+      },
+      ref
+    ) => {
+      const resolvedStrokeWidth =
+        absoluteStrokeWidth && typeof size === "number" && typeof strokeWidth === "number"
+          ? (strokeWidth * 24) / size
+          : strokeWidth;
+
+      return (
+        <svg
+          ref={ref}
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth={resolvedStrokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          {...props}
+        >
+          {iconNode.map(([elementName, attrs], index) =>
+            React.createElement(elementName, {
+              key: `${name}-${index}`,
+              ...attrs,
+            })
+          )}
+          {children}
+        </svg>
+      );
+    }
+  );
 
   Component.displayName = name;
   return Component;

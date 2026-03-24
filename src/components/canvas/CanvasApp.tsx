@@ -48,6 +48,7 @@ import {
   writePersistedAppState,
 } from "@/lib/persistence";
 import { SuggestedMapFlow, applyColumnSemanticsToColumns, getSuggestedMapFlows } from "@/lib/columnSemantics";
+import { inferChartConfigDefaults } from "@/lib/aiChartDefaults";
 import { getNodeTypeLabel } from "@/lib/utils";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useCanvasHistory } from "@/hooks/useCanvasHistory";
@@ -907,7 +908,14 @@ export default function CanvasApp() {
       issues.push("La IA creó varios nodos sin conexiones; puede que necesiten enlazarse manualmente.");
     }
 
-    const plannedPositions = buildAIPlanLayout(plan, nodePositions);
+    const existingNodesOnPage = Object.fromEntries(
+      Object.entries(dagStoreApi.getState().nodes).filter(([, node]) => node.pageId === currentPageId)
+    );
+    const plannedPositions = buildAIPlanLayout(plan, {
+      nodes: existingNodesOnPage,
+      positions: nodePositions,
+      sizes: nodeSizes,
+    });
     const nodeIdMap: Record<string, string> = {};
     const planNodeById = new Map(plan.nodes.map((node) => [node.id, node]));
     const createdPositions: Record<string, { x: number; y: number }> = {};
@@ -1039,6 +1047,22 @@ export default function CanvasApp() {
 
     await dagStoreApi.getState().executeAll();
 
+    for (const plannedNode of plan.nodes) {
+      const realNodeId = nodeIdMap[plannedNode.id];
+      const createdNode = realNodeId ? dagStoreApi.getState().nodes[realNodeId] : undefined;
+      if (!realNodeId || !createdNode || createdNode.type !== "chart") continue;
+
+      const upstreamIds = dagStoreApi.getState().getUpstreamNodeIds(realNodeId);
+      const upstreamNode = upstreamIds[0] ? dagStoreApi.getState().nodes[upstreamIds[0]] : undefined;
+      const availableColumns = getAvailableColumnsForNode(upstreamNode, tables);
+      const configPatch = inferChartConfigDefaults(createdNode.config as ChartConfig, availableColumns);
+
+      if (Object.keys(configPatch).length === 0) continue;
+
+      dagStoreApi.getState().updateNodeConfig(realNodeId, configPatch);
+      issues.push("Se completó automáticamente la configuración mínima del nodo chart.");
+    }
+
     const createdNodes = dagStoreApi.getState().nodes;
     const failedNodes = plan.nodes
       .map((plannedNode) => {
@@ -1057,7 +1081,7 @@ export default function CanvasApp() {
     setSelectedNode(preferredFocusId ?? fallbackFocusId ?? null);
 
     return issues;
-  }, [addNode, currentPageId, nodePositions, selectedNodeId, setSelectedNode, tables]);
+  }, [addNode, currentPageId, nodePositions, nodeSizes, selectedNodeId, setSelectedNode, tables]);
 
   useEffect(() => {
     if (hydrated) return;

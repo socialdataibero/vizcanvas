@@ -16,8 +16,10 @@ import {
   type ChartFieldKey,
   type ChartFieldRequirement,
 } from "@/lib/chartCatalog";
+import { getColumnOptions, getFieldOrder, getIncompatibleChartConfigPatch } from "@/lib/chartFields";
 import { chartIconRegistry } from "@/components/charts/picker/chart-icons-lucide-outline";
 import { findGeometryColumn, parseGeometryValue } from "@/lib/geospatial";
+import { inferChartConfigDefaults } from "@/lib/aiChartDefaults";
 
 interface Props {
   node: DAGNode;
@@ -311,8 +313,8 @@ function getFieldRequirement(
   chartType: ChartType | undefined,
   field: ChartFieldKey
 ): ChartFieldRequirement | null {
-  if (entry?.fields?.[field]) {
-    return entry.fields[field];
+  if (entry?.fields) {
+    return entry.fields[field] ?? null;
   }
 
   switch (chartType) {
@@ -324,10 +326,10 @@ function getFieldRequirement(
     case "choropleth":
       return field === "x" || field === "y" ? "required" : null;
     case "geoPoint":
-      if (field === "x" || field === "y") return "required";
+      if (field === "x") return "required";
       return field === "color" || field === "size" ? "optional" : null;
     case "spike":
-      if (field === "x" || field === "y" || field === "length") return "required";
+      if (field === "x" || field === "length") return "required";
       return field === "color" ? "optional" : null;
     case "arc":
       if (field === "x" || field === "y" || field === "x2" || field === "y2") return "required";
@@ -377,7 +379,7 @@ function getFieldLabel(
       if (entry?.id === "world-choropleth") return "Feature label";
       if (entry?.id === "spike-map") return "Feature label";
       if (entry?.id === "dot-map") return "Feature label";
-      if (entry?.id === "grid-cartogram") return "Feature label";
+      if (entry?.id === "grid-cartogram") return "Grid X";
       if (entry?.id === "arc-map") return "Origin Lon";
       if (entry?.id === "sankey-diagram") return "Source";
       if (entry?.id === "waterfall-chart") return "Step";
@@ -428,7 +430,7 @@ function getFieldLabel(
         return "Value";
       }
       if (entry?.id === "heatmap") return "Row";
-      if (entry?.id === "grid-cartogram") return "Row";
+      if (entry?.id === "grid-cartogram") return "Grid Y";
       if (entry?.id === "link-chart") return "Start Y";
       if (entry?.id === "horizontal-bar") return "Category";
       return "Y";
@@ -469,40 +471,6 @@ function getFieldLabel(
       if (entry?.id === "grouped-bar") return "Group";
       if (entry?.id === "faceted-histogram") return "Group";
       return "Facet";
-  }
-}
-
-function getFieldOrder(
-  entry: ChartCatalogEntry | null,
-  chartType: ChartType | undefined
-): ChartFieldKey[] {
-  if (entry?.fields) {
-    return Object.keys(entry.fields) as ChartFieldKey[];
-  }
-
-  switch (entry?.id ?? chartType) {
-    case "world-choropleth":
-    case "choropleth":
-      return ["x", "y"];
-    case "dot-map":
-    case "geoPoint":
-      return ["x", "y", "size", "color"];
-    case "spike-map":
-    case "spike":
-      return ["x", "y", "length", "color"];
-    case "arc-map":
-    case "arc":
-      return ["x", "y", "x2", "y2", "length", "color"];
-    case "grid-cartogram":
-    case "grid":
-      return ["x", "color", "label"];
-    case "link-chart":
-    case "link":
-      return ["x", "y", "x2", "y2", "label", "color"];
-    case "sankey-diagram":
-      return ["x", "y", "size", "color"];
-    default:
-      return ["y", "x", "color", "size", "facet"];
   }
 }
 
@@ -560,153 +528,67 @@ function getChartSetupMessage(config: ChartConfig, entry: ChartCatalogEntry | nu
     .join(", ")}`;
 }
 
-function getColumnOptions(
-  field: ChartFieldKey,
-  entry: ChartCatalogEntry | null,
-  chartType: ChartType | undefined,
-  allColumns: ColumnInfo[],
-  numericColumns: ColumnInfo[]
-) {
-  const numericOrAll = numericColumns.length > 0 ? numericColumns : allColumns;
-  const categoricalColumns = allColumns.filter(
-    (column) =>
-      !isNumericType(column.type) &&
-      column.role !== "geometry" &&
-      column.role !== "latitude" &&
-      column.role !== "longitude"
-  );
-  const categoricalOrAll = categoricalColumns.length > 0 ? categoricalColumns : allColumns;
-  const temporalColumns = allColumns.filter(
-    (column) => /date|time|timestamp/i.test(column.type) || /date|time|year|month|day/i.test(column.name)
-  );
-  const temporalOrAll = temporalColumns.length > 0 ? temporalColumns : allColumns;
-  const geoLongitudeColumns = allColumns.filter((column) => column.role === "longitude");
-  const geoLatitudeColumns = allColumns.filter((column) => column.role === "latitude");
-  const geoXColumns = geoLongitudeColumns.length > 0 ? geoLongitudeColumns : numericOrAll;
-  const geoYColumns = geoLatitudeColumns.length > 0 ? geoLatitudeColumns : numericOrAll;
-
-  switch (entry?.id ?? chartType) {
-    case "world-choropleth":
-      return field === "y" ? numericOrAll : allColumns;
-    case "dot-map":
-      if (field === "x") return allColumns;
-      if (field === "size") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return [];
-    case "spike-map":
-    case "spike":
-      if (field === "x") return allColumns;
-      if (field === "length") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return [];
-    case "arc-map":
-    case "arc":
-      if (field === "x" || field === "x2") return geoXColumns;
-      if (field === "y" || field === "y2") return geoYColumns;
-      if (field === "length") return numericOrAll;
-      return allColumns;
-    case "sankey-diagram":
-      if (field === "size") return numericOrAll;
-      return allColumns;
-    case "stacked-bar":
-      if (field === "y") return numericOrAll;
-      if (field === "x" || field === "color") return categoricalOrAll;
-      return allColumns;
-    case "waffle-chart":
-      if (field === "y") return numericOrAll;
-      if (field === "x" || field === "color") return categoricalOrAll;
-      return allColumns;
-    case "waterfall-chart":
-      if (field === "y") return numericOrAll;
-      if (field === "x" || field === "color") return categoricalOrAll;
-      return allColumns;
-    case "treemap":
-      if (field === "y") return numericOrAll;
-      if (field === "x" || field === "color") return categoricalOrAll;
-      return allColumns;
-    case "grid-cartogram":
-      if (field === "color") return numericOrAll;
-      if (field === "x" || field === "label") return allColumns;
-      return [];
-    case "link-chart":
-    case "link":
-      if (field === "x" || field === "y" || field === "x2" || field === "y2") {
-        return numericOrAll;
-      }
-      return allColumns;
-    case "vertical-bar":
-    case "bar":
-    case "barY":
-      if (field === "x") return categoricalOrAll;
-      if (field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "horizontal-bar":
-    case "barX":
-      if (field === "x") return numericOrAll;
-      if (field === "y") return categoricalOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "grouped-bar":
-      if (field === "y") return numericOrAll;
-      if (field === "color" || field === "facet") return categoricalOrAll;
-      return allColumns;
-    case "dot-comparison":
-      if (field === "x") return categoricalOrAll;
-      if (field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "histogram":
-      return field === "x" ? allColumns : [];
-    case "temporal-histogram":
-      return field === "x" ? temporalOrAll : [];
-    case "faceted-histogram":
-      if (field === "x") return numericOrAll;
-      if (field === "facet" || field === "color") return allColumns;
-      return [];
-    case "line-chart":
-    case "line":
-    case "area-chart":
-    case "area":
-      if (field === "x") return temporalOrAll;
-      if (field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "multi-series-line":
-      if (field === "x") return temporalOrAll;
-      if (field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "bubble-chart":
-      if (field === "size" || field === "x" || field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "scatter":
-    case "scatterplot":
-    case "color-scatterplot":
-      if (field === "x" || field === "y") return numericOrAll;
-      if (field === "color") return categoricalOrAll;
-      return allColumns;
-    case "box":
-    case "box-plot":
-      if (field === "y") return numericOrAll;
-      if (field === "x") return categoricalOrAll;
-      return allColumns;
-    case "barcode-strip-plot":
-    case "beeswarm":
-      return field === "x" ? numericOrAll : allColumns;
-    case "heatmap":
-      if (field === "color") return numericOrAll;
-      return allColumns;
-    default:
-      if (field === "y" || field === "size") return numericOrAll;
-      return allColumns;
-  }
-}
-
 function toFiniteNumber(value: unknown): number | null {
   const numericValue = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+type GridCartogramDatum = {
+  gridX: number;
+  gridY: number;
+  value: number;
+  label: string | null;
+};
+
+function buildGridCartogramData(
+  data: Record<string, unknown>[],
+  xColumn: string,
+  yColumn: string,
+  valueColumn: string,
+  labelColumn?: string
+): GridCartogramDatum[] {
+  return data.flatMap((row) => {
+    const gridX = toFiniteNumber(row[xColumn]);
+    const gridY = toFiniteNumber(row[yColumn]);
+    const value = toFiniteNumber(row[valueColumn]);
+
+    if (gridX === null || gridY === null || value === null) {
+      return [];
+    }
+
+    return [{
+      gridX,
+      gridY,
+      value,
+      label:
+        labelColumn && row[labelColumn] !== undefined && row[labelColumn] !== null
+          ? String(row[labelColumn])
+          : null,
+    }];
+  });
+}
+
+function isGridRatioDomain(values: number[]) {
+  return values.length > 0 && values.every((value) => value > 0) && Math.min(...values) < 1 && Math.max(...values) > 1;
+}
+
+function formatGridCartogramValue(value: number, ratioDomain: boolean) {
+  if (ratioDomain) {
+    const percentChange = (value - 1) * 100;
+    const rounded = Math.abs(percentChange) >= 10 ? Math.round(percentChange) : Math.round(percentChange * 10) / 10;
+    return `${rounded > 0 ? "+" : ""}${rounded}%`;
+  }
+
+  if (Math.abs(value) >= 1000) {
+    return new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: Math.abs(value) >= 10 ? 0 : 1,
+  }).format(value);
 }
 
 function buildWaterfallData(
@@ -1066,6 +948,37 @@ function buildCustomStarterCode(
 })`;
   }
 
+  if (selectedVariant === "grid-cartogram" && config.xColumn && config.yColumn && config.colorColumn) {
+    const textColumn = config.labelColumn ?? config.colorColumn;
+    return `Plot.plot({
+  width,
+  height,
+  x: { axis: null },
+  y: { axis: null },
+  color: {
+    legend: true,
+    scheme: "blues",
+    label: "${config.colorColumn}"
+  },
+  marks: [
+    Plot.cell(data, {
+      x: "${config.xColumn}",
+      y: "${config.yColumn}",
+      fill: "${config.colorColumn}",
+      inset: 1,
+      stroke: "white"
+    }),
+    Plot.text(data, {
+      x: "${config.xColumn}",
+      y: "${config.yColumn}",
+      text: "${textColumn}",
+      fontSize: 10,
+      fontWeight: 600
+    })
+  ]
+})`;
+  }
+
   if (selectedVariant === "horizontal-bar" || selectedVariant === "barX") {
     const reducer = getReducerForColumnName(config.xColumn ?? numericColumn);
     return `Plot.plot({
@@ -1311,6 +1224,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     () => getChartCatalogEntry(chartCatalogId, chartType),
     [chartCatalogId, chartType]
   );
+  const getCompatibleConfigPatch = (targetConfig: ChartConfig) => {
+    const nextEntry = getChartCatalogEntry(targetConfig.chartCatalogId, targetConfig.chartType);
+    return getIncompatibleChartConfigPatch(targetConfig, nextEntry, columns);
+  };
   const starterCustomCode = useMemo(
     () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn),
     [columns, config, geometryColumn, selectedCatalogEntry]
@@ -1350,6 +1267,18 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     const timeout = window.setTimeout(() => setCopyFeedback("idle"), 1200);
     return () => window.clearTimeout(timeout);
   }, [copyFeedback]);
+
+  useEffect(() => {
+    if (customEnabled) return;
+
+    const incompatiblePatch = getCompatibleConfigPatch(config);
+    const sanitizedConfig = { ...config, ...incompatiblePatch } as ChartConfig;
+    const defaultsPatch = inferChartConfigDefaults(sanitizedConfig, columns);
+    const configPatch = { ...incompatiblePatch, ...defaultsPatch };
+    if (Object.keys(configPatch).length === 0) return;
+
+    updateNodeConfig(node.id, configPatch);
+  }, [columns, config, customEnabled, node.id, updateNodeConfig]);
 
   useEffect(() => {
     if (
@@ -2093,55 +2022,85 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             }
             break;
           case "grid-cartogram":
-            if (xColumn && colorColumn) {
+            if (xColumn && yColumn && colorColumn) {
               showColorLegend = true;
               showGrid = false;
-              plotOptions.axis = null;
-              plotOptions.color = {
-                type: "quantile",
-                n: 9,
-                scheme: "blues",
-                ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
-              };
-              if (!geometryColumn) {
-                throw new Error("Connect a GeoJSON or TopoJSON table to render this cartogram.");
-              }
+              plotOptions.x = { axis: null };
+              plotOptions.y = { axis: null };
+              plotOptions.marginTop = 12;
+              plotOptions.marginRight = 12;
+              plotOptions.marginBottom = 12;
+              plotOptions.marginLeft = 12;
 
-              const cartogramCells = await buildCartogramCells(
+              const cartogramCells = buildGridCartogramData(
                 data as Record<string, unknown>[],
-                geometryColumn,
                 xColumn,
+                yColumn,
                 colorColumn,
                 labelColumn
               );
 
               if (cartogramCells.length === 0) {
-                throw new Error("The connected geospatial table does not contain valid geometries.");
+                throw new Error("Select numeric grid columns for X, Y, and Value.");
               }
+
+              const cartogramValues = cartogramCells.map((cell) => cell.value);
+              const ratioDomain = isGridRatioDomain(cartogramValues);
+              plotOptions.color = ratioDomain
+                ? {
+                    type: "diverging-log",
+                    pivot: 1,
+                    scheme: "PiYG",
+                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
+                  }
+                : {
+                    scheme: "blues",
+                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
+                  };
 
               marks.push(
                 Plot.cell(cartogramCells, {
                   x: "gridX",
                   y: "gridY",
                   fill: "value",
-                  inset: 2,
+                  inset: 1,
                   stroke: "#ffffff",
                   strokeWidth: 1,
                   tip: true,
-                  title: (cell: CartogramCellDatum) => `${cell.label}: ${cell.value}`,
+                  title: (cell: GridCartogramDatum) =>
+                    cell.label
+                      ? `${cell.label}: ${formatGridCartogramValue(cell.value, ratioDomain)}`
+                      : `(${cell.gridX}, ${cell.gridY}): ${formatGridCartogramValue(cell.value, ratioDomain)}`,
                 } as Record<string, unknown>)
               );
+              if (labelColumn) {
+                marks.push(
+                  Plot.text(cartogramCells, {
+                    x: "gridX",
+                    y: "gridY",
+                    text: (cell: GridCartogramDatum) => cell.label,
+                    dy: -5,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    lineWidth: 8,
+                    textAnchor: "middle",
+                    lineAnchor: "middle",
+                    fill: "#0f172a",
+                  } as Record<string, unknown>)
+                );
+              }
               marks.push(
                 Plot.text(cartogramCells, {
                   x: "gridX",
                   y: "gridY",
-                  text: (cell: CartogramCellDatum) => cell.textLabel,
-                  fontSize: 10,
-                  fontWeight: 600,
+                  text: (cell: GridCartogramDatum) => formatGridCartogramValue(cell.value, ratioDomain),
+                  dy: labelColumn ? 8 : 0,
+                  fontSize: labelColumn ? 8.5 : 10,
+                  fontWeight: labelColumn ? 500 : 700,
                   lineWidth: 8,
                   textAnchor: "middle",
                   lineAnchor: "middle",
-                  fill: "#0f172a",
+                  fill: labelColumn ? "#475467" : "#0f172a",
                 } as Record<string, unknown>)
               );
             }
@@ -2316,15 +2275,18 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           ...(resolvedYAxisOptions ? { y: resolvedYAxisOptions } : {}),
         };
         const dynamicMarginLeft =
-          variantId === "horizontal-bar" || variantId === "barX"
+          variantId === "grid-cartogram" || variantId === "grid"
+            ? 12
+            : variantId === "horizontal-bar" || variantId === "barX"
             ? 110
             : getNumericAxisMargin(yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : [], 52);
+        const dynamicMarginBottom = variantId === "grid-cartogram" || variantId === "grid" ? 12 : 36;
 
         const chart = Plot.plot({
           width: plotSize.width,
           height: plotSize.height,
           marginLeft: dynamicMarginLeft,
-          marginBottom: 36,
+          marginBottom: dynamicMarginBottom,
           marks,
           grid: showGrid,
           ...(variantId === "faceted-histogram" ? { fy: { label: null } } : {}),
@@ -2380,8 +2342,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const isChoropleth = selectedCatalogEntry?.id === "world-choropleth";
   const isBubbleMap = selectedCatalogEntry?.id === "dot-map";
   const isSpikeMap = selectedCatalogEntry?.id === "spike-map";
-  const isCartogram = selectedCatalogEntry?.id === "grid-cartogram";
-  const isGeospatialChart = isChoropleth || isBubbleMap || isSpikeMap || isCartogram || selectedCatalogEntry?.id === "arc-map";
+  const isGeospatialChart = isChoropleth || isBubbleMap || isSpikeMap || selectedCatalogEntry?.id === "arc-map";
   const choroplethGuidance =
     isChoropleth && data.length > 0 && !geometryColumn
       ? "Connect a GeoJSON or TopoJSON table to render this choropleth."
@@ -2400,12 +2361,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
       : isSpikeMap && chartError.includes("valid geometries")
         ? "The connected geospatial table does not contain valid geometries."
         : "";
-  const cartogramGuidance =
-    isCartogram && data.length > 0 && !geometryColumn
-      ? "Connect a GeoJSON or TopoJSON table to render this cartogram."
-      : isCartogram && chartError.includes("valid geometries")
-        ? "The connected geospatial table does not contain valid geometries."
-        : "";
+  const cartogramGuidance = "";
 
   const syncCustomFromBuilder = (nextConfig: ChartConfig) => {
     const nextEntry = getChartCatalogEntry(nextConfig.chartCatalogId, nextConfig.chartType);
@@ -2414,16 +2370,20 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
 
   const updateChartConfig = (patch: Partial<ChartConfig>, options?: { syncCustom?: boolean }) => {
     const nextConfig = { ...config, ...patch } as ChartConfig;
+    const incompatiblePatch = getCompatibleConfigPatch(nextConfig);
+    const resolvedPatch = { ...patch, ...incompatiblePatch } as Partial<ChartConfig>;
+    const sanitizedNextConfig = { ...config, ...resolvedPatch } as ChartConfig;
+
     if (options?.syncCustom === false) {
-      updateNodeConfig(node.id, patch);
+      updateNodeConfig(node.id, resolvedPatch);
       return;
     }
 
-    const nextCustomCode = syncCustomFromBuilder(nextConfig);
+    const nextCustomCode = syncCustomFromBuilder(sanitizedNextConfig);
     updateNodeConfig(node.id, {
-      ...patch,
+      ...resolvedPatch,
       customCode: nextCustomCode,
-      customBaseChartId: nextConfig.chartCatalogId,
+      customBaseChartId: sanitizedNextConfig.chartCatalogId,
     } as Partial<ChartConfig>);
     setCustomDraft(nextCustomCode);
   };

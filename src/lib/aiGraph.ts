@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { DAGNode } from "@/engine/types";
+import { CHART_CATALOG } from "@/lib/chartCatalog";
 import { DataTable } from "@/types/data";
 import {
   AggregationConfig,
@@ -120,6 +121,11 @@ const SUPPORTED_CHART_TYPES: ChartType[] = [
   "sankey",
 ];
 const SUPPORTED_CONTROL_TYPES: ControlDefinition["type"][] = ["dropdown", "slider", "date", "text"];
+const SUPPORTED_AI_CHART_VARIANTS = new Map(
+  CHART_CATALOG
+    .filter((entry) => entry.supported && entry.chartType)
+    .map((entry) => [entry.id, entry])
+);
 
 const CHART_TYPE_ALIASES: Record<string, ChartType> = {
   area: "area",
@@ -523,13 +529,70 @@ function normalizeJoinConfig(rawConfig: Record<string, unknown>): JoinConfig {
   };
 }
 
+function inferChartCatalogId(chartType: ChartType | undefined, rawConfig: Record<string, unknown>): string | undefined {
+  if (!chartType) return undefined;
+
+  switch (chartType) {
+    case "bar":
+      return coerceString(rawConfig.facetColumn ?? rawConfig.facet) ? "grouped-bar" : "vertical-bar";
+    case "barX":
+      return "horizontal-bar";
+    case "line":
+      return coerceString(rawConfig.colorColumn ?? rawConfig.color ?? rawConfig.seriesColumn)
+        ? "multi-series-line"
+        : "line-chart";
+    case "area":
+      return "area-chart";
+    case "scatter":
+      if (coerceString(rawConfig.sizeColumn ?? rawConfig.size)) return "bubble-chart";
+      if (coerceString(rawConfig.colorColumn ?? rawConfig.color ?? rawConfig.seriesColumn)) return "color-scatterplot";
+      return "scatterplot";
+    case "dot":
+      return "dot-comparison";
+    case "histogram":
+      return coerceString(rawConfig.facetColumn ?? rawConfig.facet) ? "faceted-histogram" : "histogram";
+    case "box":
+      return "box-plot";
+    case "stackedBar":
+      return "stacked-bar";
+    case "waffle":
+      return "waffle-chart";
+    case "waterfall":
+      return "waterfall-chart";
+    case "treemap":
+      return "treemap";
+    case "grid":
+      return "grid-cartogram";
+    case "link":
+      return "link-chart";
+    case "choropleth":
+      return "world-choropleth";
+    case "geoPoint":
+      return "dot-map";
+    case "spike":
+      return "spike-map";
+    case "arc":
+      return "arc-map";
+    case "sankey":
+      return "sankey-diagram";
+    default:
+      return undefined;
+  }
+}
+
 function normalizeChartConfig(rawConfig: Record<string, unknown>, warnings: string[]): ChartConfig {
   const requestedChartType = coerceString(rawConfig.chartType);
   const normalizedChartKey = requestedChartType?.replace(/[\s_-]+/g, "").toLowerCase();
   const aliasedChartType = normalizedChartKey ? CHART_TYPE_ALIASES[normalizedChartKey] : undefined;
-  const chartType =
+  const normalizedChartType =
     (requestedChartType && SUPPORTED_CHART_TYPES.find((candidate) => candidate === requestedChartType)) ||
     aliasedChartType;
+  const requestedChartCatalogId = coerceString(rawConfig.chartCatalogId ?? rawConfig.chartVariant ?? rawConfig.variant);
+  const requestedChartEntry = requestedChartCatalogId
+    ? SUPPORTED_AI_CHART_VARIANTS.get(requestedChartCatalogId)
+    : undefined;
+  const chartType = requestedChartEntry?.chartType ?? normalizedChartType;
+  const chartCatalogId = requestedChartEntry?.id ?? inferChartCatalogId(chartType, rawConfig);
 
   if (
     requestedChartType &&
@@ -538,9 +601,18 @@ function normalizeChartConfig(rawConfig: Record<string, unknown>, warnings: stri
   ) {
     warnings.push(`La IA devolvió un chartType no soportado: "${requestedChartType}".`);
   }
+  if (requestedChartCatalogId && !requestedChartEntry) {
+    warnings.push(`La IA devolvió un chartCatalogId no soportado: "${requestedChartCatalogId}".`);
+  }
+  if (requestedChartEntry && normalizedChartType && requestedChartEntry.chartType !== normalizedChartType) {
+    warnings.push(
+      `Se ajustó el chartType a "${requestedChartEntry.chartType}" para coincidir con la variante "${requestedChartEntry.id}".`
+    );
+  }
 
   return {
     chartType,
+    chartCatalogId,
     xColumn: coerceString(rawConfig.xColumn ?? rawConfig.x ?? rawConfig.categoryColumn),
     yColumn: coerceString(rawConfig.yColumn ?? rawConfig.y ?? rawConfig.valueColumn),
     x2Column: coerceString(rawConfig.x2Column ?? rawConfig.x2 ?? rawConfig.endXColumn ?? rawConfig.destinationXColumn),

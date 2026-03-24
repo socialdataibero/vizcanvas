@@ -1,13 +1,95 @@
+import { DAGNode } from "@/engine/types";
 import { AIGraphPlan } from "@/lib/aiGraph";
-import { getCanvasNodeWidth } from "@/lib/canvasLayout";
+import { getBaseCanvasNodeHeight, getCanvasNodeWidth } from "@/lib/canvasLayout";
 
 const AI_GRAPH_GAP_X = 96;
 const AI_GRAPH_GAP_Y = 220;
+const AI_FLOW_START_X = 120;
+const AI_FLOW_START_Y = 140;
+const AI_FLOW_BLOCK_GAP_X = 180;
+const AI_FLOW_BLOCK_GAP_Y = 220;
+const AI_FLOW_COLLISION_PADDING = 56;
 
-export function buildAIPlanLayout(
+type NodePosition = { x: number; y: number };
+type NodeSize = { width: number; height: number };
+type LayoutRect = NodePosition & NodeSize;
+
+interface ExistingLayoutContext {
+  nodes: Record<string, DAGNode>;
+  positions: Record<string, NodePosition>;
+  sizes: Record<string, NodeSize>;
+}
+
+function rectanglesOverlap(a: LayoutRect, b: LayoutRect, padding = 0): boolean {
+  return !(
+    a.x + a.width + padding <= b.x ||
+    b.x + b.width + padding <= a.x ||
+    a.y + a.height + padding <= b.y ||
+    b.y + b.height + padding <= a.y
+  );
+}
+
+function buildPlanRects(
   plan: AIGraphPlan,
-  existingPositions: Record<string, { x: number; y: number }>
-): Record<string, { x: number; y: number }> {
+  positions: Record<string, NodePosition>
+): LayoutRect[] {
+  return plan.nodes.map((node) => ({
+    x: positions[node.id]?.x ?? 0,
+    y: positions[node.id]?.y ?? 0,
+    width: getCanvasNodeWidth(node.type),
+    height: getBaseCanvasNodeHeight(node.type),
+  }));
+}
+
+function getBounds(rects: LayoutRect[]): LayoutRect | null {
+  if (rects.length === 0) return null;
+
+  const minX = Math.min(...rects.map((rect) => rect.x));
+  const minY = Math.min(...rects.map((rect) => rect.y));
+  const maxRight = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const maxBottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxRight - minX,
+    height: maxBottom - minY,
+  };
+}
+
+function collectOccupiedRects(existingLayout?: ExistingLayoutContext): LayoutRect[] {
+  if (!existingLayout) return [];
+
+  return Object.entries(existingLayout.nodes).flatMap(([nodeId, node]) => {
+    const position = existingLayout.positions[nodeId];
+    if (!position) return [];
+
+    const explicitSize = existingLayout.sizes[nodeId];
+    return [{
+      x: position.x,
+      y: position.y,
+      width: explicitSize?.width ?? getCanvasNodeWidth(node.type),
+      height: explicitSize?.height ?? getBaseCanvasNodeHeight(node.type),
+    }];
+  });
+}
+
+function translatePositions(
+  positions: Record<string, NodePosition>,
+  offset: NodePosition
+): Record<string, NodePosition> {
+  return Object.fromEntries(
+    Object.entries(positions).map(([nodeId, position]) => [
+      nodeId,
+      {
+        x: Math.round(position.x + offset.x),
+        y: Math.round(position.y + offset.y),
+      },
+    ])
+  );
+}
+
+function buildRelativePlanLayout(plan: AIGraphPlan): Record<string, NodePosition> {
   const nodeOrder = new Map(plan.nodes.map((node, index) => [node.id, index]));
   const nodeById = new Map(plan.nodes.map((node) => [node.id, node]));
   const incoming = new Map<string, number>();
@@ -69,11 +151,8 @@ export function buildAIPlanLayout(
     nodesByLevel.set(level, [...(nodesByLevel.get(level) ?? []), nodeId]);
   }
 
-  const existingEntries = Object.values(existingPositions);
-  const baseX = existingEntries.length > 0 ? Math.max(...existingEntries.map((position) => position.x)) + 420 : 120;
-  const baseY = existingEntries.length > 0 ? Math.min(...existingEntries.map((position) => position.y)) : 140;
   const xByLevel = new Map<number, number>();
-  let cursorX = baseX;
+  let cursorX = 0;
 
   for (const level of levelsUsed) {
     xByLevel.set(level, cursorX);
@@ -84,33 +163,140 @@ export function buildAIPlanLayout(
     cursorX += maxWidth + AI_GRAPH_GAP_X;
   }
 
-  const usedYs = new Map<number, number[]>();
-  const positions: Record<string, { x: number; y: number }> = {};
+  const usedRectsByLevel = new Map<number, LayoutRect[]>();
+  const positions: Record<string, NodePosition> = {};
 
   for (const nodeId of topologicalOrder) {
     const level = levels.get(nodeId) ?? 0;
-    const levelYs = usedYs.get(level) ?? [];
+    const node = nodeById.get(nodeId);
+    const nodeWidth = getCanvasNodeWidth(node?.type ?? "table");
+    const nodeHeight = getBaseCanvasNodeHeight(node?.type ?? "table");
+    const levelRects = usedRectsByLevel.get(level) ?? [];
     const parentIds = parents.get(nodeId) ?? [];
-    const parentYs = parentIds
-      .map((parentId) => positions[parentId]?.y)
+    const parentCenters = parentIds
+      .map((parentId) => {
+        const parentPosition = positions[parentId];
+        const parentNode = nodeById.get(parentId);
+        if (!parentPosition || !parentNode) return null;
+        return parentPosition.y + getBaseCanvasNodeHeight(parentNode.type) / 2;
+      })
       .filter((value): value is number => typeof value === "number");
 
     let y =
-      parentYs.length > 0
-        ? parentYs.reduce((sum, value) => sum + value, 0) / parentYs.length
-        : baseY + levelYs.length * AI_GRAPH_GAP_Y;
+      parentCenters.length > 0
+        ? parentCenters.reduce((sum, value) => sum + value, 0) / parentCenters.length - nodeHeight / 2
+        : levelRects.length === 0
+          ? 0
+          : Math.max(...levelRects.map((rect) => rect.y + rect.height)) + AI_GRAPH_GAP_Y;
 
-    while (levelYs.some((usedY) => Math.abs(usedY - y) < AI_GRAPH_GAP_Y * 0.75)) {
-      y += AI_GRAPH_GAP_Y;
+    let candidateRect: LayoutRect = {
+      x: xByLevel.get(level) ?? 0,
+      y,
+      width: nodeWidth,
+      height: nodeHeight,
+    };
+
+    while (levelRects.some((rect) => rectanglesOverlap(candidateRect, rect, AI_FLOW_COLLISION_PADDING))) {
+      y = Math.max(
+        ...levelRects
+          .filter((rect) => rectanglesOverlap(candidateRect, rect, AI_FLOW_COLLISION_PADDING))
+          .map((rect) => rect.y + rect.height)
+      ) + AI_GRAPH_GAP_Y;
+      candidateRect = {
+        ...candidateRect,
+        y,
+      };
     }
 
     positions[nodeId] = {
-      x: xByLevel.get(level) ?? baseX,
-      y: Math.round(y),
+      x: candidateRect.x,
+      y: Math.round(candidateRect.y),
     };
-    levelYs.push(y);
-    usedYs.set(level, levelYs);
+    levelRects.push({
+      ...candidateRect,
+      y: Math.round(candidateRect.y),
+    });
+    usedRectsByLevel.set(level, levelRects);
   }
 
-  return positions;
+  const bounds = getBounds(buildPlanRects(plan, positions));
+  if (!bounds) return positions;
+
+  return translatePositions(positions, {
+    x: -bounds.x,
+    y: -bounds.y,
+  });
+}
+
+function findFlowAnchor(
+  plan: AIGraphPlan,
+  relativePositions: Record<string, NodePosition>,
+  occupiedRects: LayoutRect[]
+): NodePosition {
+  if (occupiedRects.length === 0) {
+    return { x: AI_FLOW_START_X, y: AI_FLOW_START_Y };
+  }
+
+  const occupiedBounds = getBounds(occupiedRects);
+  const planBounds = getBounds(buildPlanRects(plan, relativePositions));
+
+  if (!occupiedBounds || !planBounds) {
+    return { x: AI_FLOW_START_X, y: AI_FLOW_START_Y };
+  }
+
+  const candidateAnchors: NodePosition[] = [
+    {
+      x: occupiedBounds.x + occupiedBounds.width + AI_FLOW_BLOCK_GAP_X,
+      y: Math.max(AI_FLOW_START_Y, occupiedBounds.y),
+    },
+    {
+      x: Math.max(AI_FLOW_START_X, occupiedBounds.x),
+      y: occupiedBounds.y + occupiedBounds.height + AI_FLOW_BLOCK_GAP_Y,
+    },
+  ];
+
+  for (let column = 0; column < 4; column += 1) {
+    for (let row = 0; row < 4; row += 1) {
+      candidateAnchors.push({
+        x: occupiedBounds.x + occupiedBounds.width + AI_FLOW_BLOCK_GAP_X + column * (planBounds.width + AI_FLOW_BLOCK_GAP_X),
+        y: Math.max(AI_FLOW_START_Y, occupiedBounds.y) + row * (planBounds.height + AI_FLOW_BLOCK_GAP_Y),
+      });
+    }
+  }
+
+  const relativeRects = buildPlanRects(plan, relativePositions);
+
+  for (const anchor of candidateAnchors) {
+    const translatedRects = relativeRects.map((rect) => ({
+      ...rect,
+      x: rect.x + anchor.x,
+      y: rect.y + anchor.y,
+    }));
+
+    const overlapsExisting = translatedRects.some((rect) =>
+      occupiedRects.some((occupiedRect) =>
+        rectanglesOverlap(rect, occupiedRect, AI_FLOW_COLLISION_PADDING)
+      )
+    );
+
+    if (!overlapsExisting) {
+      return anchor;
+    }
+  }
+
+  return {
+    x: occupiedBounds.x + occupiedBounds.width + AI_FLOW_BLOCK_GAP_X,
+    y: Math.max(AI_FLOW_START_Y, occupiedBounds.y),
+  };
+}
+
+export function buildAIPlanLayout(
+  plan: AIGraphPlan,
+  existingLayout?: ExistingLayoutContext
+): Record<string, NodePosition> {
+  const relativePositions = buildRelativePlanLayout(plan);
+  const occupiedRects = collectOccupiedRects(existingLayout);
+  const anchor = findFlowAnchor(plan, relativePositions, occupiedRects);
+
+  return translatePositions(relativePositions, anchor);
 }

@@ -53,4 +53,15 @@ describe("chartCatalog", () => {
     expect(CHART_CATALOG.find((entry) => entry.id === "world-choropleth")?.section).toBe("MAPS");
     expect(CHART_CATALOG.find((entry) => entry.id === "sankey-diagram")?.section).toBe("FLOW");
   });
+
+  it("defines grid cartogram as an explicit x/y tile layout", () => {
+    expect(getChartCatalogEntry("grid-cartogram", "grid")).toMatchObject({
+      fields: {
+        x: "required",
+        y: "required",
+        color: "required",
+        label: "optional",
+      },
+    });
+  });
 });
