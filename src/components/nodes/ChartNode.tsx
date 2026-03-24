@@ -15,6 +15,7 @@ import {
   type ChartFieldKey,
   type ChartFieldRequirement,
 } from "@/lib/chartCatalog";
+import { chartIconRegistry } from "@/components/charts/picker/chart-icons-lucide-outline";
 import { findGeometryColumn, parseGeometryValue } from "@/lib/geospatial";
 
 interface Props {
@@ -24,8 +25,78 @@ interface Props {
 
 type TabId = "type" | "data" | "options";
 
+interface ChartTypeButtonProps {
+  entry: ChartCatalogEntry;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
 const BASE_CHART_COLOR = "#14b8a6";
 const ALL_CHART_FIELDS: ChartFieldKey[] = ["x", "y", "x2", "y2", "color", "size", "length", "label", "facet"];
+
+function getCompactSwatchLegendOptions(plotWidth: number) {
+  return {
+    legend: true,
+    swatchSize: 8,
+    width: Math.max(220, plotWidth - 8),
+  };
+}
+
+function getAxisLabel(
+  field: "x" | "y",
+  entry: ChartCatalogEntry | null,
+  chartType: ChartType | undefined,
+  column?: string,
+  counterpartColumn?: string
+) {
+  if (!column) return undefined;
+
+  const semanticLabel = getFieldLabel(field, entry, chartType);
+  if (counterpartColumn && counterpartColumn === column) {
+    return semanticLabel;
+  }
+
+  if (semanticLabel === "X" || semanticLabel === "Y") {
+    return column;
+  }
+
+  return semanticLabel;
+}
+
+function mergeAxisOptions(
+  existing: unknown,
+  label?: string
+) {
+  if (existing && typeof existing === "object" && "axis" in (existing as Record<string, unknown>) && (existing as Record<string, unknown>).axis === null) {
+    return existing;
+  }
+
+  if (!label) return existing;
+  return {
+    ...(existing && typeof existing === "object" ? existing as Record<string, unknown> : {}),
+    label,
+  };
+}
+
+function ChartTypeButton({ entry, isSelected, onSelect }: ChartTypeButtonProps) {
+  const Icon = chartIconRegistry[entry.iconName];
+
+  return (
+    <button
+      className={`chart-type-btn ${isSelected ? "selected" : ""} ${entry.supported ? "" : "opacity-45 cursor-not-allowed"}`}
+      onClick={onSelect}
+      title={
+        entry.supported
+          ? entry.description
+          : `${entry.label}: catalog item not available yet`
+      }
+      disabled={!entry.supported}
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0" />
+      <span className="text-[7px] leading-tight">{entry.label}</span>
+    </button>
+  );
+}
 
 function isNumericType(type: string): boolean {
   return /int|float|double|decimal|numeric|real|bigint|smallint|tinyint/i.test(type);
@@ -119,7 +190,7 @@ function getFieldLabel(
       if (entry?.id === "spike-map") return "Latitude";
       if (entry?.id === "sankey-diagram") return "Target";
       if (entry?.id === "waterfall-chart") return "Change";
-      if (entry?.id === "treemap" || entry?.id === "waffle-chart" || entry?.id === "stacked-bar") {
+      if (entry?.id === "treemap" || entry?.id === "waffle-chart" || entry?.id === "stacked-bar" || entry?.id === "grouped-bar") {
         return "Value";
       }
       if (entry?.id === "grid-cartogram") return "Row";
@@ -169,6 +240,10 @@ function getFieldOrder(
   entry: ChartCatalogEntry | null,
   chartType: ChartType | undefined
 ): ChartFieldKey[] {
+  if (entry?.fields) {
+    return Object.keys(entry.fields) as ChartFieldKey[];
+  }
+
   switch (entry?.id ?? chartType) {
     case "world-choropleth":
     case "choropleth":
@@ -730,11 +805,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         let showColorLegend = false;
         let showGrid = true;
         const plotOptions: Record<string, unknown> = {};
+        let legendOptions: Record<string, unknown> | null = null;
 
         switch (variantId) {
           case "stacked-bar":
             if (xColumn && yColumn && colorColumn) {
               showColorLegend = true;
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               marks.push(
                 Plot.barY(
                   data,
@@ -752,11 +829,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             }
             break;
           case "grouped-bar":
-            if (xColumn && yColumn && colorColumn && facetColumn) {
+            if (yColumn && colorColumn && facetColumn) {
               showColorLegend = true;
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               marks.push(
                 Plot.barY(data, {
-                  x: xColumn,
+                  x: colorColumn,
                   y: yColumn,
                   fill: colorColumn,
                   fx: facetColumn,
@@ -797,6 +875,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "waffle-chart":
             if (xColumn && yColumn) {
               showColorLegend = true;
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               showGrid = false;
               marks.push(
                 Plot.waffleY(data, {
@@ -812,6 +891,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               const waterfallData = buildWaterfallData(data as Record<string, unknown>[], xColumn, yColumn, colorColumn);
               if (waterfallData.length > 0) {
                 showColorLegend = Boolean(colorColumn);
+                if (colorColumn) legendOptions = getCompactSwatchLegendOptions(plotSize.width);
                 marks.push(
                   Plot.barY(waterfallData, {
                     x: "step",
@@ -839,7 +919,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "line-chart":
           case "line":
             if (xColumn && yColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.line(data, {
                   x: xColumn,
@@ -852,6 +935,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "multi-series-line":
             if (xColumn && yColumn && colorColumn) {
               showColorLegend = true;
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               marks.push(
                 Plot.line(data, {
                   x: xColumn,
@@ -864,7 +948,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "area-chart":
           case "area":
             if (xColumn && yColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.areaY(data, {
                   x: xColumn,
@@ -891,6 +978,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 histogramOptions.fy = facetColumn;
                 histogramOptions.fill = colorColumn || facetColumn;
                 showColorLegend = Boolean(colorColumn || facetColumn);
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               }
               marks.push(
                 Plot.rectY(
@@ -908,7 +996,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "color-scatterplot":
           case "scatter":
             if (xColumn && yColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.dot(data, {
                   x: xColumn,
@@ -921,7 +1012,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "bubble-chart":
             if (xColumn && yColumn && sizeColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.dot(data, {
                   x: xColumn,
@@ -935,7 +1029,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "beeswarm":
             if (xColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.dot(
                   data,
@@ -962,7 +1059,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "dot-comparison":
           case "dot":
             if (xColumn && yColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(Plot.ruleY([0]));
               marks.push(
                 Plot.dot(data, {
@@ -1188,7 +1288,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 colorColumn
               );
               if (leaves.length > 0) {
-                showColorLegend = true;
+                showColorLegend = Boolean(colorColumn);
+                if (colorColumn) {
+                  legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+                }
                 showGrid = false;
                 plotOptions.x = { axis: null };
                 plotOptions.y = { axis: null };
@@ -1255,6 +1358,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (xColumn && yColumn && x2Column && y2Column) {
               showGrid = false;
               showColorLegend = Boolean(colorColumn);
+              if (colorColumn) {
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               marks.push(
                 Plot.link(data, {
                   x1: xColumn,
@@ -1299,6 +1405,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               );
               if (sankeyNodes.length > 0 && linkBands.length > 0) {
                 showColorLegend = Boolean(colorColumn);
+                if (colorColumn) {
+                  legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+                }
                 showGrid = false;
                 plotOptions.x = { axis: null };
                 plotOptions.y = { axis: null };
@@ -1350,6 +1459,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 value: Number(d[yColumn]) || 0,
               }));
               showColorLegend = true;
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               marks.push(
                 Plot.barY(pieData, {
                   x: "label",
@@ -1377,6 +1487,30 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           return;
         }
 
+        const { color: variantColorOptions, ...restPlotOptions } = plotOptions as Record<string, unknown> & {
+          color?: Record<string, unknown>;
+        };
+        const resolvedColorOptions = variantColorOptions
+          ? { ...variantColorOptions, ...(showColorLegend ? { legend: true } : {}) }
+          : showColorLegend
+            ? legendOptions ?? { legend: true }
+            : undefined;
+        const resolvedXAxisOptions = mergeAxisOptions(
+          restPlotOptions.x,
+          variantId === "grouped-bar"
+            ? getFieldLabel("color", selectedCatalogEntry, chartType)
+            : getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn)
+        );
+        const resolvedYAxisOptions = mergeAxisOptions(
+          restPlotOptions.y,
+          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn)
+        );
+        const finalPlotOptions = {
+          ...restPlotOptions,
+          ...(resolvedXAxisOptions ? { x: resolvedXAxisOptions } : {}),
+          ...(resolvedYAxisOptions ? { y: resolvedYAxisOptions } : {}),
+        };
+
         const chart = Plot.plot({
           width: plotSize.width,
           height: plotSize.height,
@@ -1386,8 +1520,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           marks,
           grid: showGrid,
           ...(variantId === "faceted-histogram" ? { fy: { label: null } } : {}),
-          ...(showColorLegend ? { color: { legend: true } } : {}),
-          ...plotOptions,
+          ...(resolvedColorOptions ? { color: resolvedColorOptions } : {}),
+          ...finalPlotOptions,
           style: { fontSize: "10px", background: "transparent" },
         });
         if (!cancelled) {
@@ -1609,28 +1743,18 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                         </div>
                         <div className="grid grid-cols-3 gap-1">
                           {types.map((entry) => (
-                            <button
+                            <ChartTypeButton
                               key={entry.id}
-                              className={`chart-type-btn ${
-                                selectedCatalogEntry?.id === entry.id ? "selected" : ""
-                              } ${entry.supported ? "" : "opacity-45 cursor-not-allowed"}`}
-                              onClick={() => {
+                              entry={entry}
+                              isSelected={selectedCatalogEntry?.id === entry.id}
+                              onSelect={() => {
                                 if (!entry.supported || !entry.chartType) return;
                                 updateNodeConfig(node.id, {
                                   chartCatalogId: entry.id,
                                   chartType: entry.chartType,
                                 } as Partial<ChartConfig>);
                               }}
-                              title={
-                                entry.supported
-                                  ? entry.description
-                                  : `${entry.label}: catalog item not available yet`
-                              }
-                              disabled={!entry.supported}
-                            >
-                              <span className="text-sm leading-none">{entry.icon}</span>
-                              <span className="text-[7px] leading-tight">{entry.label}</span>
-                            </button>
+                            />
                           ))}
                         </div>
                       </div>
@@ -1718,7 +1842,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               </div>
             ) : (
               <div
-                className="chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg border border-slate-100 bg-white p-2"
+                className="chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg bg-white p-2"
                 dangerouslySetInnerHTML={{ __html: chartMarkup }}
               />
             )}

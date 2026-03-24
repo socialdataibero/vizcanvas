@@ -670,9 +670,37 @@ body {
 }
 
 /* Chart container */
-.chart-container svg {
+.chart-container > svg {
   width: 100%;
   height: auto;
+}
+
+.chart-container .plot-swatches-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-height: auto !important;
+  column-gap: 8px;
+  row-gap: 3px;
+}
+
+.chart-container .plot-swatch {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.4em !important;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.chart-container .plot-swatch > svg {
+  width: auto;
+  height: auto;
+  flex: none;
+}
+
+.chart-container .plot-swatches {
+  font-size: 9px !important;
+  margin-bottom: 0.35em !important;
 }
 
 /* Animation */

@@ -1,3 +1,4 @@
+import type { ChartIconName } from "@/components/charts/picker/chart-icons-lucide-outline";
 import type { ChartType } from "@/types/nodes";
 
 export type ChartGallerySection =
@@ -15,7 +16,7 @@ export type ChartFieldRequirement = "required" | "optional";
 export interface ChartCatalogEntry {
   id: string;
   label: string;
-  icon: string;
+  iconName: ChartIconName;
   section: ChartGallerySection;
   description: string;
   supported: boolean;
@@ -37,7 +38,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "vertical-bar",
     label: "Columns",
-    icon: "▁▃▅▇",
+    iconName: "ChartColumns",
     section: "COMPARISON",
     description: "Vertical bars for category comparisons.",
     supported: true,
@@ -47,7 +48,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "horizontal-bar",
     label: "Bars",
-    icon: "▬▬▬",
+    iconName: "ChartBars",
     section: "COMPARISON",
     description: "Horizontal bars for rankings and long labels.",
     supported: true,
@@ -57,17 +58,17 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "grouped-bar",
     label: "Grouped",
-    icon: "▥▥",
+    iconName: "ChartGrouped",
     section: "COMPARISON",
     description: "Side-by-side bars grouped by category and series.",
     supported: true,
     chartType: "bar",
-    fields: { x: "required", y: "required", color: "required", facet: "required" },
+    fields: { y: "required", color: "required", facet: "required" },
   },
   {
     id: "histogram",
     label: "Histogram",
-    icon: "▐▌▐",
+    iconName: "ChartHistogram",
     section: "DISTRIBUTION",
     description: "Binned distribution of a continuous field.",
     supported: true,
@@ -77,7 +78,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "stacked-bar",
     label: "Stacked",
-    icon: "▤▤",
+    iconName: "ChartStacked",
     section: "PART-TO-WHOLE",
     description: "Stacked segments showing part contribution per category.",
     supported: true,
@@ -87,7 +88,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "temporal-histogram",
     label: "Temporal",
-    icon: "▐⏱",
+    iconName: "ChartTemporal",
     section: "TIME",
     description: "Histogram-like counts over time intervals.",
     supported: true,
@@ -97,7 +98,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "line-chart",
     label: "Line",
-    icon: "∿",
+    iconName: "ChartLine",
     section: "TIME",
     description: "Single-series line chart.",
     supported: true,
@@ -107,7 +108,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "multi-series-line",
     label: "Multi-line",
-    icon: "≈≈",
+    iconName: "ChartMultiLine",
     section: "TIME",
     description: "Multiple lines split by a series field.",
     supported: true,
@@ -117,7 +118,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "area-chart",
     label: "Area",
-    icon: "◿",
+    iconName: "ChartArea",
     section: "TIME",
     description: "Area chart emphasizing magnitude over time.",
     supported: true,
@@ -127,7 +128,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "scatterplot",
     label: "Scatter",
-    icon: "⋮⋰⋯",
+    iconName: "ChartScatter",
     section: "RELATIONSHIP",
     description: "Relationship between two quantitative fields.",
     supported: true,
@@ -137,7 +138,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "color-scatterplot",
     label: "Color scatter",
-    icon: "◔◑",
+    iconName: "ChartColorScatter",
     section: "RELATIONSHIP",
     description: "Scatterplot with group encoded as color.",
     supported: true,
@@ -147,7 +148,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "bubble-chart",
     label: "Bubble",
-    icon: "◉◎",
+    iconName: "ChartBubble",
     section: "RELATIONSHIP",
     description: "Scatterplot with bubble size encoding a third measure.",
     supported: true,
@@ -157,7 +158,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "dot-comparison",
     label: "Dot plot",
-    icon: "⊙⊙⊙",
+    iconName: "ChartDotPlot",
     section: "COMPARISON",
     description: "Category comparison using dots instead of bars.",
     supported: true,
@@ -167,7 +168,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "beeswarm",
     label: "Beeswarm",
-    icon: "✳︎",
+    iconName: "ChartBeeswarm",
     section: "DISTRIBUTION",
     description: "Jittered dots to show individual observations without overlap.",
     supported: true,
@@ -177,7 +178,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "box-plot",
     label: "Box plot",
-    icon: "⊟⊟",
+    iconName: "ChartBoxPlot",
     section: "DISTRIBUTION",
     description: "Quartiles and spread by category.",
     supported: true,
@@ -187,7 +188,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "faceted-histogram",
     label: "Faceted",
-    icon: "▤▤",
+    iconName: "ChartFaceted",
     section: "DISTRIBUTION",
     description: "Small-multiple histograms split by a category.",
     supported: true,
@@ -197,7 +198,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "barcode-strip-plot",
     label: "Strip",
-    icon: "||||",
+    iconName: "ChartStrip",
     section: "DISTRIBUTION",
     description: "Each record rendered as a thin tick.",
     supported: true,
@@ -207,7 +208,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "heatmap",
     label: "Heatmap",
-    icon: "▦▦",
+    iconName: "ChartHeatmap",
     section: "RELATIONSHIP",
     description: "Matrix-style intensity map.",
     supported: true,
@@ -217,7 +218,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "treemap",
     label: "Treemap",
-    icon: "▥▦",
+    iconName: "ChartTreemap",
     section: "PART-TO-WHOLE",
     description: "Nested rectangles for hierarchical part-to-whole structure.",
     supported: true,
@@ -227,7 +228,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "waffle-chart",
     label: "Waffle",
-    icon: "▩▩",
+    iconName: "ChartWaffle",
     section: "PART-TO-WHOLE",
     description: "Part-to-whole shown as a grid of equal units.",
     supported: true,
@@ -237,7 +238,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "waterfall-chart",
     label: "Waterfall",
-    icon: "▂▅▃",
+    iconName: "ChartWaterfall",
     section: "PART-TO-WHOLE",
     description: "Sequential increases and decreases to a final total.",
     supported: true,
@@ -247,7 +248,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "arc-map",
     label: "Arc Map",
-    icon: "⌒⌒",
+    iconName: "ChartArcMap",
     section: "FLOW",
     description: "Curved connections between locations.",
     supported: true,
@@ -257,7 +258,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "world-choropleth",
     label: "Choropleth",
-    icon: "▧▨",
+    iconName: "ChartChoropleth",
     section: "MAPS",
     description: "Values encoded over geographic regions.",
     supported: true,
@@ -267,7 +268,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "dot-map",
     label: "Bubble map",
-    icon: "◌◍",
+    iconName: "ChartBubbleMap",
     section: "MAPS",
     description: "Points or bubbles placed over geography.",
     supported: true,
@@ -277,7 +278,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "spike-map",
     label: "Spike map",
-    icon: "╽╽",
+    iconName: "ChartTemporal",
     section: "MAPS",
     description: "Vertical spikes over locations, sized by magnitude.",
     supported: true,
@@ -287,7 +288,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "grid-cartogram",
     label: "Cartogram",
-    icon: "⊞⊞",
+    iconName: "ChartCartogram",
     section: "MAPS",
     description: "Grid-based geographic cartogram.",
     supported: true,
@@ -297,7 +298,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "link-chart",
     label: "Link",
-    icon: "⇢⇢",
+    iconName: "ChartLink",
     section: "FLOW",
     description: "Source-destination link visualization.",
     supported: true,
@@ -307,7 +308,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
   {
     id: "sankey-diagram",
     label: "Sankey",
-    icon: "⟿",
+    iconName: "ChartSankey",
     section: "FLOW",
     description: "Flow thickness indicates quantity across steps.",
     supported: true,
