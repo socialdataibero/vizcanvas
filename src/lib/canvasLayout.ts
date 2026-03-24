@@ -3,7 +3,7 @@ import { CanvasFrame } from "@/types/canvas";
 import { NodeType, QueryResult } from "@/types/nodes";
 
 const CANVAS_NODE_WIDTH: Partial<Record<NodeType, number>> = {
-  chart: 540,
+  chart: 760,
 };
 
 const EMPTY_STATE_PLACEMENT_HEIGHT: Partial<Record<NodeType, number>> = {

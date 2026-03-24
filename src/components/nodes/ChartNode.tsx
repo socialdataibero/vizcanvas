@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type * as PlotModule from "@observablehq/plot";
 import type { GeoGeometryObjects } from "d3";
-import { FiChevronsLeft, FiChevronsRight } from "react-icons/fi";
+import { FiChevronsLeft, FiChevronsRight, FiCopy, FiPlay, FiRotateCcw } from "react-icons/fi";
 import { LuChartColumnBig } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { ChartConfig, ChartType, ColumnInfo } from "@/types/nodes";
@@ -24,7 +24,7 @@ interface Props {
   presentationMode?: boolean;
 }
 
-type TabId = "type" | "data" | "options";
+type TabId = "type" | "data" | "options" | "customs";
 
 interface ChartTypeButtonProps {
   entry: ChartCatalogEntry;
@@ -35,20 +35,57 @@ interface ChartTypeButtonProps {
 const BASE_CHART_COLOR = "#14b8a6";
 const ALL_CHART_FIELDS: ChartFieldKey[] = ["x", "y", "x2", "y2", "color", "size", "length", "label", "facet"];
 
-function getCompactSwatchLegendOptions(plotWidth: number) {
+function getBarYMarkOptions(xColumn: string, yColumn: string, fill: string) {
   return {
-    legend: true,
-    swatchSize: 8,
-    width: Math.max(220, plotWidth - 8),
+    x: xColumn,
+    y: yColumn,
+    fill,
   };
 }
 
-function getQuantitativeLegendOptions(plotWidth: number, label: string) {
+function getBarXMarkOptions(yColumn: string, xColumn: string, fill: string) {
+  return {
+    y: yColumn,
+    x: xColumn,
+    fill,
+  };
+}
+
+function getCompactSwatchLegendOptions(_plotWidth: number) {
   return {
     legend: true,
-    width: Math.max(180, Math.min(280, Math.round(plotWidth * 0.34))),
+  };
+}
+
+function getQuantitativeLegendOptions(_plotWidth: number, label: string) {
+  return {
+    legend: true,
     label,
   };
+}
+
+function isPercentageLikeColumnName(name?: string | null) {
+  return Boolean(name && /pct|percent|percentage|porcentaje|tasa|rate|ratio/i.test(name));
+}
+
+function isAverageLikeColumnName(name?: string | null) {
+  return Boolean(name && /price|cost|rate|ratio|score|avg|mean|margin|pct|percent|percentage|porcentaje/i.test(name));
+}
+
+function getReducerForColumnName(name?: string | null) {
+  return isAverageLikeColumnName(name) ? "mean" : "sum";
+}
+
+function getNumericAxisMargin(values: unknown[], fallback = 52) {
+  const numericValues = values
+    .map((value) => (typeof value === "number" ? value : Number(value)))
+    .filter((value) => Number.isFinite(value));
+
+  if (numericValues.length === 0) return fallback;
+
+  const maxAbs = Math.max(...numericValues.map((value) => Math.abs(value)));
+  const formatted = Math.round(maxAbs).toLocaleString();
+  return Math.max(fallback, Math.min(96, formatted.length * 8 + 20));
 }
 
 function getAxisLabel(
@@ -60,16 +97,15 @@ function getAxisLabel(
 ) {
   if (!column) return undefined;
 
-  const semanticLabel = getFieldLabel(field, entry, chartType);
   if (counterpartColumn && counterpartColumn === column) {
-    return semanticLabel;
-  }
-
-  if (semanticLabel === "X" || semanticLabel === "Y") {
     return column;
   }
 
-  return semanticLabel;
+  if (entry?.id === "grouped-bar" && field === "x") {
+    return getFieldLabel("color", entry, chartType);
+  }
+
+  return column;
 }
 
 function mergeAxisOptions(
@@ -85,6 +121,149 @@ function mergeAxisOptions(
     ...(existing && typeof existing === "object" ? existing as Record<string, unknown> : {}),
     label,
   };
+}
+
+function formatAxisTickValue(value: number, columnName?: string, values: unknown[] = []) {
+  const numericValues = values
+    .map((entry) => (typeof entry === "number" ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry));
+  const maxAbs = numericValues.length > 0 ? Math.max(...numericValues.map((entry) => Math.abs(entry))) : Math.abs(value);
+
+  if (isPercentageLikeColumnName(columnName)) {
+    const usesUnitScale = maxAbs <= 1;
+    const normalizedValue = usesUnitScale ? value * 100 : value;
+    return `${new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: Math.abs(normalizedValue) >= 10 ? 0 : 1,
+    }).format(normalizedValue)}%`;
+  }
+
+  if (maxAbs >= 1000) {
+    return new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+
+  return undefined;
+}
+
+function mergeAxisDisplayOptions(
+  existing: unknown,
+  label: string | undefined,
+  columnName?: string,
+  values: unknown[] = []
+) {
+  const merged = mergeAxisOptions(existing, label);
+  if (!columnName || !merged || typeof merged !== "object") {
+    return merged;
+  }
+
+  const tickSample = formatAxisTickValue(0, columnName, values);
+  if (tickSample === undefined) {
+    return merged;
+  }
+
+  return {
+    ...(merged as Record<string, unknown>),
+    tickFormat: (value: number) => formatAxisTickValue(value, columnName, values) ?? value,
+  };
+}
+
+function roundUpToNiceStep(value: number) {
+  if (value <= 0) return 1;
+  if (value <= 5) return Math.ceil(value);
+  if (value <= 10) return Math.ceil(value / 2) * 2;
+  if (value <= 25) return Math.ceil(value / 5) * 5;
+  if (value <= 50) return Math.ceil(value / 10) * 10;
+  if (value <= 100) return Math.ceil(value / 20) * 20;
+  if (value <= 250) return Math.ceil(value / 50) * 50;
+  if (value <= 500) return Math.ceil(value / 100) * 100;
+  if (value <= 1000) return Math.ceil(value / 200) * 200;
+  return Math.ceil(value / 20) * 20;
+}
+
+type SpikeLegendMode = "percent" | "compact" | "plain";
+
+function getSpikeLegendMode(values: number[], columnName?: string): SpikeLegendMode {
+  const finiteValues = values.filter((value) => Number.isFinite(value) && value >= 0);
+  if (finiteValues.length === 0) return "plain";
+
+  const maxValue = Math.max(...finiteValues);
+  if (isPercentageLikeColumnName(columnName) && maxValue <= 100) {
+    return "percent";
+  }
+  if (maxValue >= 1000) {
+    return "compact";
+  }
+  return "plain";
+}
+
+function formatSpikeLegendValue(value: number, mode: SpikeLegendMode) {
+  if (mode === "percent") {
+    return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: value >= 10 ? 0 : 1 }).format(value)}%`;
+  }
+  if (mode === "compact") {
+    return new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: value >= 10 ? 0 : 1,
+  }).format(value);
+}
+
+function getSpikeLengthRange(mode: SpikeLegendMode, maxValue: number) {
+  if (mode === "percent") return [0, 64];
+  if (mode === "compact") return [0, 110];
+  return maxValue <= 100 ? [0, 80] : [0, 96];
+}
+
+function buildSpikeLegendValues(values: number[], mode: SpikeLegendMode) {
+  const finiteValues = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (finiteValues.length === 0) return [];
+
+  const maxValue = Math.max(...finiteValues);
+  if (mode === "percent" || mode === "plain") {
+    const niceMax = roundUpToNiceStep(maxValue);
+    const step = Math.max(1, niceMax / 4);
+    return Array.from({ length: 4 }, (_, index) => step * (index + 1)).filter((value) => value <= niceMax);
+  }
+
+  const step = maxValue / 4;
+  return Array.from({ length: 4 }, (_, index) => step * (index + 1)).filter((value) => value > 0);
+}
+
+function buildSpikeLegendMarks(
+  Plot: typeof PlotModule,
+  values: number[],
+  mode: SpikeLegendMode,
+  stroke: string,
+  frameAnchor: "bottom-right" | "bottom-left" | "top-right" | "top-left" = "bottom-right"
+): PlotModule.Markish[] {
+  const legendValues = buildSpikeLegendValues(values, mode);
+  if (legendValues.length === 0) return [];
+
+  return legendValues.flatMap((value, index) => {
+    const dx = (index - legendValues.length) * 26;
+
+    return [
+      Plot.spike([value], {
+        length: [value],
+        dx,
+        dy: -24,
+        frameAnchor,
+        stroke,
+      } as Record<string, unknown>),
+      Plot.text([value], {
+        text: [formatSpikeLegendValue(value, mode)],
+        dx,
+        dy: -8,
+        frameAnchor,
+        textAnchor: "middle",
+      } as Record<string, unknown>),
+    ];
+  });
 }
 
 function ChartTypeButton({ entry, isSelected, onSelect }: ChartTypeButtonProps) {
@@ -105,6 +284,22 @@ function ChartTypeButton({ entry, isSelected, onSelect }: ChartTypeButtonProps) 
       <span className="text-[7px] leading-tight">{entry.label}</span>
     </button>
   );
+}
+
+function alignSvgTopLeft(markup: string) {
+  if (!markup.includes("<svg")) return markup;
+  if (markup.includes("preserveAspectRatio=")) {
+    return markup.replace(/preserveAspectRatio="[^"]*"/, 'preserveAspectRatio="xMinYMin meet"');
+  }
+  return markup.replace("<svg", '<svg preserveAspectRatio="xMinYMin meet"');
+}
+
+function injectSvgStyle(markup: string, style: string) {
+  if (!markup.includes("<svg")) return markup;
+  if (markup.includes('style="')) {
+    return markup.replace(/style="([^"]*)"/, (_match, existing) => `style="${existing}; ${style}"`);
+  }
+  return markup.replace("<svg", `<svg style="${style}"`);
 }
 
 function isNumericType(type: string): boolean {
@@ -439,11 +634,27 @@ function getColumnOptions(
         return numericOrAll;
       }
       return allColumns;
+    case "vertical-bar":
+    case "bar":
+    case "barY":
+      if (field === "x") return categoricalOrAll;
+      if (field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
+      return allColumns;
     case "horizontal-bar":
-      return field === "x" ? numericOrAll : allColumns;
+    case "barX":
+      if (field === "x") return numericOrAll;
+      if (field === "y") return categoricalOrAll;
+      if (field === "color") return categoricalOrAll;
+      return allColumns;
     case "grouped-bar":
       if (field === "y") return numericOrAll;
       if (field === "color" || field === "facet") return categoricalOrAll;
+      return allColumns;
+    case "dot-comparison":
+      if (field === "x") return categoricalOrAll;
+      if (field === "y") return numericOrAll;
+      if (field === "color") return categoricalOrAll;
       return allColumns;
     case "histogram":
       return field === "x" ? allColumns : [];
@@ -533,16 +744,54 @@ function buildWaterfallData(
   });
 }
 
+function aggregateCategoryValues(
+  data: Record<string, unknown>[],
+  categoryColumn: string,
+  valueColumn: string,
+  reducer: "sum" | "mean",
+  groupColumn?: string
+) {
+  const grouped = new Map<string, { category: string; group?: string; total: number; count: number }>();
+
+  data.forEach((row) => {
+    const category = row[categoryColumn];
+    const numericValue = toFiniteNumber(row[valueColumn]);
+    if (category === undefined || category === null || numericValue === null) return;
+
+    const groupValue =
+      groupColumn && row[groupColumn] !== undefined && row[groupColumn] !== null
+        ? String(row[groupColumn])
+        : undefined;
+    const key = `${String(category)}__${groupValue ?? ""}`;
+    const current = grouped.get(key) ?? {
+      category: String(category),
+      ...(groupValue ? { group: groupValue } : {}),
+      total: 0,
+      count: 0,
+    };
+    current.total += numericValue;
+    current.count += 1;
+    grouped.set(key, current);
+  });
+
+  return Array.from(grouped.values()).map((entry) => ({
+    category: entry.category,
+    value: reducer === "mean" ? entry.total / Math.max(entry.count, 1) : entry.total,
+    ...(entry.group ? { group: entry.group } : {}),
+  }));
+}
+
 async function buildTreemapLeaves(
   data: Record<string, unknown>[],
   labelColumn: string,
   valueColumn: string,
   width: number,
   height: number,
-  groupColumn?: string
+  groupColumn?: string,
+  reducer: "sum" | "mean" = "sum"
 ) {
   const d3 = await import("d3");
-  const groupedValues = new Map<string, Map<string, number>>();
+  const groupedValues = new Map<string, Map<string, { total: number; count: number }>>();
   type TreemapDatum = {
     name: string;
     value?: number;
@@ -559,8 +808,11 @@ async function buildTreemapLeaves(
         ? String(row[groupColumn])
         : "All";
     const itemKey = String(label);
-    const groupItems = groupedValues.get(groupKey) ?? new Map<string, number>();
-    groupItems.set(itemKey, (groupItems.get(itemKey) ?? 0) + value);
+    const groupItems = groupedValues.get(groupKey) ?? new Map<string, { total: number; count: number }>();
+    const current = groupItems.get(itemKey) ?? { total: 0, count: 0 };
+    current.total += value;
+    current.count += 1;
+    groupItems.set(itemKey, current);
     groupedValues.set(groupKey, groupItems);
   });
 
@@ -572,7 +824,10 @@ async function buildTreemapLeaves(
     name: "root",
     children: Array.from(groupedValues.entries(), ([group, items]) => ({
       name: group,
-      children: Array.from(items.entries(), ([label, value]) => ({ name: label, value })),
+      children: Array.from(items.entries(), ([label, stats]) => ({
+        name: label,
+        value: reducer === "mean" ? stats.total / Math.max(stats.count, 1) : stats.total,
+      })),
     })),
   };
 
@@ -767,6 +1022,142 @@ async function buildCartogramCells(
   );
 }
 
+function buildCustomStarterCode(
+  config: ChartConfig,
+  entry: ChartCatalogEntry | null,
+  columns: ColumnInfo[],
+  geometryColumn: string | null
+) {
+  const categoryColumn = config.xColumn ?? columns[0]?.name ?? "category";
+  const numericColumn =
+    config.yColumn ??
+    config.sizeColumn ??
+    config.lengthColumn ??
+    columns.find((column) => isNumericType(column.type))?.name ??
+    columns[1]?.name ??
+    "value";
+  const featureLabelColumn = config.xColumn ?? config.labelColumn ?? columns[0]?.name ?? "label";
+  const selectedVariant = entry?.id ?? config.chartType;
+
+  if (selectedVariant === "world-choropleth" && geometryColumn) {
+    return `Plot.plot({
+  width,
+  height,
+  color: {
+    legend: true,
+    scheme: "blues",
+    label: "${numericColumn}"
+  },
+  projection: {
+    type: "mercator",
+    domain: {
+      type: "FeatureCollection",
+      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}")
+    }
+  },
+  marks: [
+    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}"), {
+      fill: d => d.properties.value,
+      stroke: "white",
+      strokeWidth: 0.8,
+      tip: true
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "horizontal-bar" || selectedVariant === "barX") {
+    const reducer = getReducerForColumnName(config.xColumn ?? numericColumn);
+    return `Plot.plot({
+  width,
+  height,
+  x: { label: "${config.xColumn ?? numericColumn}" },
+  y: { label: "${config.yColumn ?? columns[0]?.name ?? "category"}" },
+  marks: [
+    Plot.barX(
+      data,
+      Plot.groupY({ x: "${reducer}" }, {
+      y: "${config.yColumn ?? columns[0]?.name ?? "category"}",
+      x: "${config.xColumn ?? numericColumn}",
+      fill: "#14b8a6"
+    })
+    ),
+    Plot.ruleX([0], { stroke: "#94a3b8" })
+  ]
+})`;
+  }
+
+  const reducer = getReducerForColumnName(config.yColumn ?? numericColumn);
+  return `Plot.plot({
+  width,
+  height,
+  x: { label: "${categoryColumn}" },
+  y: { label: "${numericColumn}" },
+  marks: [
+    Plot.barY(
+      data,
+      Plot.groupX({ y: "${reducer}" }, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "#14b8a6"
+    })
+    ),
+    Plot.ruleY([0], { stroke: "#94a3b8" })
+  ]
+})`;
+}
+
+function parseQuotedFieldOption(code: string, key: string) {
+  const match = code.match(new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`));
+  return match?.[1];
+}
+
+function parseCustomPlotConfig(code: string, availableColumns: ColumnInfo[]): Partial<ChartConfig> | null {
+  const normalized = code.replace(/\s+/g, " ");
+  const columnNames = new Set(availableColumns.map((column) => column.name));
+
+  if (normalized.includes("Plot.barY(")) {
+    const x = parseQuotedFieldOption(code, "x");
+    const y = parseQuotedFieldOption(code, "y");
+    const fill = parseQuotedFieldOption(code, "fill");
+    return {
+      chartType: "bar",
+      chartCatalogId: "vertical-bar",
+      xColumn: x,
+      yColumn: y,
+      colorColumn: fill && columnNames.has(fill) ? fill : undefined,
+    };
+  }
+
+  if (normalized.includes("Plot.barX(")) {
+    const y = parseQuotedFieldOption(code, "y");
+    const x = parseQuotedFieldOption(code, "x");
+    const fill = parseQuotedFieldOption(code, "fill");
+    return {
+      chartType: "barX",
+      chartCatalogId: "horizontal-bar",
+      xColumn: x,
+      yColumn: y,
+      colorColumn: fill && columnNames.has(fill) ? fill : undefined,
+    };
+  }
+
+  if (normalized.includes("Plot.line(")) {
+    const x = parseQuotedFieldOption(code, "x");
+    const y = parseQuotedFieldOption(code, "y");
+    const stroke = parseQuotedFieldOption(code, "stroke");
+    return {
+      chartType: "line",
+      chartCatalogId: "line-chart",
+      xColumn: x,
+      yColumn: y,
+      colorColumn: stroke && columnNames.has(stroke) ? stroke : undefined,
+    };
+  }
+
+  return null;
+}
+
 async function buildSankeyData(
   data: Record<string, unknown>[],
   sourceColumn: string,
@@ -902,6 +1293,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     lengthColumn,
     labelColumn,
     facetColumn,
+    customCode,
+    customEnabled,
+    customBaseChartId,
   } = config;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
@@ -910,12 +1304,19 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const data = useMemo(() => upstreamNode?.result?.rows ?? [], [upstreamNode?.result?.rows]);
   const geometryColumn = useMemo(() => findGeometryColumn(columns), [columns]);
   const previewRef = useRef<HTMLDivElement>(null);
+  const customEditorRef = useRef<HTMLTextAreaElement>(null);
   const [activeTab, setActiveTab] = useState<TabId>("type");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const selectedCatalogEntry = useMemo(
     () => getChartCatalogEntry(chartCatalogId, chartType),
     [chartCatalogId, chartType]
   );
+  const starterCustomCode = useMemo(
+    () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn),
+    [columns, config, geometryColumn, selectedCatalogEntry]
+  );
+  const [customDraft, setCustomDraft] = useState(customCode ?? starterCustomCode);
+  const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied">("idle");
   const [plotSize, setPlotSize] = useState({ width: 400, height: 220 });
   const [chartMarkup, setChartMarkup] = useState<string>("");
   const [chartError, setChartError] = useState<string>("");
@@ -939,6 +1340,16 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     observer.observe(previewEl);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    setCustomDraft(customCode ?? starterCustomCode);
+  }, [customCode, starterCustomCode]);
+
+  useEffect(() => {
+    if (copyFeedback !== "copied") return undefined;
+    const timeout = window.setTimeout(() => setCopyFeedback("idle"), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [copyFeedback]);
 
   useEffect(() => {
     if (
@@ -970,6 +1381,65 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
       try {
         const Plot = await import("@observablehq/plot");
         if (cancelled) return;
+        if (customEnabled && (customCode ?? "").trim()) {
+          if (!customCode?.includes("Plot.plot(")) {
+            throw new Error('Custom charts must call Plot.plot({ ... }).');
+          }
+
+          const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+            ...args: string[]
+          ) => (...fnArgs: unknown[]) => Promise<unknown>;
+          let plottedChart: HTMLElement | SVGElement | null = null;
+          const plotProxy = new Proxy(Plot, {
+            get(target, prop, receiver) {
+              if (prop === "plot") {
+                return (options: Record<string, unknown>) => {
+                  const chart = target.plot(options);
+                  plottedChart = chart;
+                  return chart;
+                };
+              }
+              return Reflect.get(target, prop, receiver);
+            },
+          });
+          const helpers = {
+            geometryFeatures: (
+              rows: Record<string, unknown>[],
+              geometryField: string,
+              labelField: string,
+              valueField: string
+            ) => buildGeometryFeatures(rows, geometryField, labelField, valueField),
+            parseGeometryValue,
+          };
+          const executeCustomPlot = new AsyncFunction(
+            "Plot",
+            "data",
+            "width",
+            "height",
+            "helpers",
+            `"use strict";\n${customCode}`
+          );
+          const customResult = await executeCustomPlot(plotProxy, data, plotSize.width, plotSize.height, helpers);
+          const customChart = plottedChart ?? customResult;
+
+          if (!(customChart instanceof HTMLElement) && !(customChart instanceof SVGElement)) {
+            throw new Error('Custom code must return Plot.plot({ ... }) or call Plot.plot({ ... }).');
+          }
+
+          if (!cancelled) {
+            const html =
+              customChart instanceof HTMLElement
+                ? customChart.outerHTML
+                : (() => {
+                    const container = document.createElement("div");
+                    container.appendChild(customChart.cloneNode(true));
+                    return container.outerHTML;
+                  })();
+            setChartMarkup(html);
+            setChartError("");
+          }
+          return;
+        }
         const marks: PlotModule.Markish[] = [];
         const variantId = selectedCatalogEntry?.id ?? chartType;
         let showColorLegend = false;
@@ -982,11 +1452,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (xColumn && yColumn && colorColumn) {
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              const reducer = getReducerForColumnName(yColumn);
               marks.push(
                 Plot.barY(
                   data,
                   Plot.groupX(
-                    { y: "sum" },
+                    { y: reducer },
                     {
                       x: xColumn,
                       y: yColumn,
@@ -1002,13 +1473,20 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (yColumn && colorColumn && facetColumn) {
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              const reducer = getReducerForColumnName(yColumn);
               marks.push(
-                Plot.barY(data, {
-                  x: colorColumn,
-                  y: yColumn,
-                  fill: colorColumn,
-                  fx: facetColumn,
-                } as Record<string, unknown>)
+                Plot.barY(
+                  data,
+                  Plot.groupX(
+                    { y: reducer },
+                    {
+                      x: colorColumn,
+                      y: yColumn,
+                      fill: colorColumn,
+                      fx: facetColumn,
+                    } as Record<string, unknown>
+                  )
+                )
               );
               marks.push(Plot.ruleY([0]));
             }
@@ -1018,28 +1496,34 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "barY":
             if (xColumn && yColumn) {
               if (colorColumn) showColorLegend = true;
+              const reducer = getReducerForColumnName(yColumn);
               marks.push(
-                Plot.barY(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn || BASE_CHART_COLOR,
-                })
+                Plot.barY(
+                  data,
+                  Plot.groupX(
+                    { y: reducer },
+                    getBarYMarkOptions(xColumn, yColumn, colorColumn || BASE_CHART_COLOR) as Record<string, unknown>
+                  )
+                )
               );
-              marks.push(Plot.ruleY([0]));
+              marks.push(Plot.ruleY([0], { stroke: "#94a3b8" }));
             }
             break;
           case "horizontal-bar":
           case "barX":
             if (xColumn && yColumn) {
               if (colorColumn) showColorLegend = true;
+              const reducer = getReducerForColumnName(xColumn);
               marks.push(
-                Plot.barX(data, {
-                  y: yColumn,
-                  x: xColumn,
-                  fill: colorColumn || BASE_CHART_COLOR,
-                })
+                Plot.barX(
+                  data,
+                  Plot.groupY(
+                    { x: reducer },
+                    getBarXMarkOptions(yColumn, xColumn, colorColumn || BASE_CHART_COLOR) as Record<string, unknown>
+                  )
+                )
               );
-              marks.push(Plot.ruleX([0]));
+              marks.push(Plot.ruleX([0], { stroke: "#94a3b8" }));
             }
             break;
           case "waffle-chart":
@@ -1047,11 +1531,19 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               showGrid = false;
+              const reducer = getReducerForColumnName(yColumn);
+              const waffleData = aggregateCategoryValues(
+                data as Record<string, unknown>[],
+                xColumn,
+                yColumn,
+                reducer,
+                colorColumn || xColumn
+              );
               marks.push(
-                Plot.waffleY(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn || xColumn,
+                Plot.waffleY(waffleData, {
+                  x: "category",
+                  y: "value",
+                  fill: colorColumn ? "group" : "category",
                 } as Record<string, unknown>)
               );
             }
@@ -1127,7 +1619,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   x: xColumn,
                   y: yColumn,
                   fill: colorColumn || BASE_CHART_COLOR,
-                  fillOpacity: 0.4,
                 })
               );
               marks.push(
@@ -1175,7 +1666,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   x: xColumn,
                   y: yColumn,
                   fill: colorColumn || BASE_CHART_COLOR,
-                  r: 4,
                 })
               );
             }
@@ -1192,7 +1682,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   y: yColumn,
                   fill: colorColumn || BASE_CHART_COLOR,
                   r: sizeColumn,
-                  fillOpacity: 0.75,
                 } as Record<string, unknown>)
               );
             }
@@ -1209,7 +1698,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   Plot.dodgeY({
                     x: xColumn,
                     fill: colorColumn || BASE_CHART_COLOR,
-                    r: 3,
                   } as Record<string, unknown>)
                 )
               );
@@ -1221,7 +1709,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 Plot.tickX(data, {
                   x: xColumn,
                   stroke: BASE_CHART_COLOR,
-                  strokeOpacity: 0.35,
                 } as Record<string, unknown>)
               );
             }
@@ -1233,13 +1720,20 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 showColorLegend = true;
                 legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               }
+              const reducer = getReducerForColumnName(yColumn);
+              const dotData = aggregateCategoryValues(
+                data as Record<string, unknown>[],
+                xColumn,
+                yColumn,
+                reducer,
+                colorColumn
+              );
               marks.push(Plot.ruleY([0]));
               marks.push(
-                Plot.dot(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn || BASE_CHART_COLOR,
-                  r: 4,
+                Plot.dot(dotData, {
+                  x: "category",
+                  y: "value",
+                  fill: colorColumn ? "group" : BASE_CHART_COLOR,
                 })
               );
             }
@@ -1397,10 +1891,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "spike":
             if (xColumn && lengthColumn) {
               showGrid = false;
-              plotOptions.marginTop = 8;
-              plotOptions.marginRight = 8;
-              plotOptions.marginBottom = 8;
-              plotOptions.marginLeft = 8;
+              plotOptions.marginTop = 24;
+              plotOptions.marginRight = 0;
+              plotOptions.marginBottom = 0;
+              plotOptions.marginLeft = 0;
 
               if (!geometryColumn) {
                 throw new Error("Connect a GeoJSON or TopoJSON table to render this spike map.");
@@ -1432,6 +1926,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 throw new Error("The connected geospatial table does not contain valid geometries.");
               }
 
+              const spikeValues = spikeFeatures
+                .map((feature) => feature.properties.value)
+                .filter((value): value is number => value !== null && Number.isFinite(value));
+              const spikeLegendMode = getSpikeLegendMode(spikeValues, lengthColumn);
+              const maxSpikeValue = spikeValues.length > 0 ? Math.max(...spikeValues) : 0;
+              plotOptions.length = { range: getSpikeLengthRange(spikeLegendMode, maxSpikeValue) };
+
               plotOptions.projection = {
                 type: "mercator",
                 domain: {
@@ -1445,9 +1946,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               }
               marks.push(
                 Plot.geo(spikeFeatures, {
-                  fill: "#f8fafc",
-                  stroke: "#e2e8f0",
-                  strokeWidth: 0.8,
+                  fill: "#e0e0e0",
+                  stroke: "white",
+                  strokeWidth: 1,
                 } as Record<string, unknown>)
               );
               marks.push(
@@ -1457,13 +1958,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                     length: (feature: GeometryFeatureDatum) => feature.properties.value ?? 0,
                     stroke: colorColumn
                       ? (feature: GeometryFeatureDatum) => feature.properties.group ?? BASE_CHART_COLOR
-                      : BASE_CHART_COLOR,
+                      : "red",
                     fill: colorColumn
                       ? (feature: GeometryFeatureDatum) => feature.properties.group ?? BASE_CHART_COLOR
-                      : BASE_CHART_COLOR,
-                    fillOpacity: 0.22,
-                    strokeWidth: 1.5,
-                    anchor: "start",
+                      : "red",
                     tip: true,
                     title: (feature: GeometryFeatureDatum) =>
                       feature.properties.value === null
@@ -1472,6 +1970,17 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   } as Record<string, unknown>)
                 )
               );
+              if (!colorColumn) {
+                marks.push(
+                  ...buildSpikeLegendMarks(
+                    Plot,
+                    spikeValues,
+                    spikeLegendMode,
+                    "red",
+                    "bottom-right"
+                  )
+                );
+              }
             }
             break;
           case "arc-map":
@@ -1533,13 +2042,15 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "treemap":
             if (xColumn && yColumn) {
+              const reducer = getReducerForColumnName(yColumn);
               const leaves = await buildTreemapLeaves(
                 data as Record<string, unknown>[],
                 xColumn,
                 yColumn,
                 plotSize.width,
                 plotSize.height,
-                colorColumn
+                colorColumn,
+                reducer
               );
               if (leaves.length > 0) {
                 showColorLegend = Boolean(colorColumn);
@@ -1736,9 +2247,15 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "pie":
             if (xColumn && yColumn) {
-              const pieData = data.map((d: Record<string, unknown>) => ({
-                label: String(d[xColumn]),
-                value: Number(d[yColumn]) || 0,
+              const reducer = getReducerForColumnName(yColumn);
+              const pieData = aggregateCategoryValues(
+                data as Record<string, unknown>[],
+                xColumn,
+                yColumn,
+                reducer
+              ).map((entry) => ({
+                label: entry.category,
+                value: entry.value,
               }));
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
@@ -1777,27 +2294,36 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           : showColorLegend
             ? legendOptions ?? { legend: true }
             : undefined;
-        const resolvedXAxisOptions = mergeAxisOptions(
+        const xAxisValues = xColumn ? data.map((row) => (row as Record<string, unknown>)[xColumn]) : [];
+        const yAxisValues = yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : [];
+        const resolvedXAxisOptions = mergeAxisDisplayOptions(
           restPlotOptions.x,
           variantId === "grouped-bar"
             ? getFieldLabel("color", selectedCatalogEntry, chartType)
-            : getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn)
+            : getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn),
+          xColumn,
+          xAxisValues
         );
-        const resolvedYAxisOptions = mergeAxisOptions(
+        const resolvedYAxisOptions = mergeAxisDisplayOptions(
           restPlotOptions.y,
-          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn)
+          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn),
+          yColumn,
+          yAxisValues
         );
         const finalPlotOptions = {
           ...restPlotOptions,
           ...(resolvedXAxisOptions ? { x: resolvedXAxisOptions } : {}),
           ...(resolvedYAxisOptions ? { y: resolvedYAxisOptions } : {}),
         };
+        const dynamicMarginLeft =
+          variantId === "horizontal-bar" || variantId === "barX"
+            ? 110
+            : getNumericAxisMargin(yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : [], 52);
 
         const chart = Plot.plot({
           width: plotSize.width,
           height: plotSize.height,
-          marginLeft:
-            variantId === "horizontal-bar" || variantId === "barX" ? 110 : 52,
+          marginLeft: dynamicMarginLeft,
           marginBottom: 36,
           marks,
           grid: showGrid,
@@ -1807,7 +2333,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           style: { fontSize: "10px", background: "transparent" },
         });
         if (!cancelled) {
-          setChartMarkup(chart.outerHTML);
+          let html = isGeospatialChart ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
+          if (isSpikeMap) {
+            html = injectSvgStyle(html, "transform: translateX(-28px);");
+          }
+          setChartMarkup(html);
           setChartError("");
         }
         chart.remove();
@@ -1826,6 +2356,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   }, [
     chartType,
     colorColumn,
+    customCode,
+    customEnabled,
     facetColumn,
     labelColumn,
     lengthColumn,
@@ -1843,11 +2375,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const numericCols = columns.filter((c) => isNumericType(c.type));
   const allCols = columns;
   const chartReady = isChartReady(config, selectedCatalogEntry);
+  const previewReady = customEnabled ? Boolean((customCode ?? "").trim()) : chartReady;
   const setupMessage = getChartSetupMessage(config, selectedCatalogEntry);
   const isChoropleth = selectedCatalogEntry?.id === "world-choropleth";
   const isBubbleMap = selectedCatalogEntry?.id === "dot-map";
   const isSpikeMap = selectedCatalogEntry?.id === "spike-map";
   const isCartogram = selectedCatalogEntry?.id === "grid-cartogram";
+  const isGeospatialChart = isChoropleth || isBubbleMap || isSpikeMap || isCartogram || selectedCatalogEntry?.id === "arc-map";
   const choroplethGuidance =
     isChoropleth && data.length > 0 && !geometryColumn
       ? "Connect a GeoJSON or TopoJSON table to render this choropleth."
@@ -1873,6 +2407,37 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         ? "The connected geospatial table does not contain valid geometries."
         : "";
 
+  const syncCustomFromBuilder = (nextConfig: ChartConfig) => {
+    const nextEntry = getChartCatalogEntry(nextConfig.chartCatalogId, nextConfig.chartType);
+    return buildCustomStarterCode(nextConfig, nextEntry, columns, geometryColumn);
+  };
+
+  const updateChartConfig = (patch: Partial<ChartConfig>, options?: { syncCustom?: boolean }) => {
+    const nextConfig = { ...config, ...patch } as ChartConfig;
+    if (options?.syncCustom === false) {
+      updateNodeConfig(node.id, patch);
+      return;
+    }
+
+    const nextCustomCode = syncCustomFromBuilder(nextConfig);
+    updateNodeConfig(node.id, {
+      ...patch,
+      customCode: nextCustomCode,
+      customBaseChartId: nextConfig.chartCatalogId,
+    } as Partial<ChartConfig>);
+    setCustomDraft(nextCustomCode);
+  };
+
+  const applyCustomDraft = () => {
+    const parsedConfig = parseCustomPlotConfig(customDraft, columns);
+    updateNodeConfig(node.id, {
+      ...(parsedConfig ?? {}),
+      customCode: customDraft,
+      customEnabled: true,
+      customBaseChartId: selectedCatalogEntry?.id ?? customBaseChartId ?? chartCatalogId,
+    } as Partial<ChartConfig>);
+  };
+
   const updateChartField = (
     field: keyof Pick<
       ChartConfig,
@@ -1880,7 +2445,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     >,
     value: string
   ) => {
-    updateNodeConfig(node.id, {
+    updateChartConfig({
       [field]: value || undefined,
     } as Partial<ChartConfig>);
   };
@@ -1983,7 +2548,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             presentationEmptyState("Geospatial source required", spikeMapGuidance)
           ) : cartogramGuidance ? (
             presentationEmptyState("Geospatial source required", cartogramGuidance)
-          ) : !chartReady ? (
+          ) : !previewReady ? (
             presentationEmptyState("Chart not configured", setupMessage)
           ) : chartError ? (
             presentationEmptyState("Chart unavailable", chartError, "error")
@@ -2005,47 +2570,48 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-0 overflow-hidden no-drag" style={{ minWidth: 0 }}>
-      {/* Tab bar */}
-      <div className="mb-2 flex items-center border-b border-gray-100">
-        {(["type", "data", "options"] as TabId[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab);
-              setIsSidebarCollapsed(false);
-            }}
-            className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors border-b-2 -mb-px ${
-              activeTab === tab
-                ? "border-teal-500 text-teal-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setIsSidebarCollapsed((current) => !current)}
-          className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-600"
-          title={isSidebarCollapsed ? "Show chart sidebar" : "Hide chart sidebar"}
-          aria-label={isSidebarCollapsed ? "Show chart sidebar" : "Hide chart sidebar"}
-        >
-          {isSidebarCollapsed ? <FiChevronsRight className="h-3.5 w-3.5" /> : <FiChevronsLeft className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-
-      {/* LEFT/RIGHT layout: config panel + chart preview */}
       <div className="flex flex-1 min-h-0 gap-2 overflow-hidden">
-        {/* Config panel */}
         <div
-          className={`min-h-0 flex-shrink-0 overflow-hidden transition-[width,opacity,margin] duration-200 ease-out ${
+          className={`flex min-h-0 flex-shrink-0 flex-col overflow-hidden transition-[width,opacity,margin] duration-200 ease-out ${
             isSidebarCollapsed
-              ? "w-0 border-transparent pr-0 opacity-0"
-              : "w-40 border-r border-gray-100 pr-2 opacity-100"
+              ? "w-9 border-r border-gray-100 pr-0 opacity-100"
+              : "w-64 border-r border-gray-100 pr-2 opacity-100"
           }`}
           aria-hidden={isSidebarCollapsed}
         >
-          <div className="subtle-scrollbar h-full min-h-0 overflow-y-auto pr-1">
+          <div className="border-b border-gray-100 px-2 pb-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              {!isSidebarCollapsed && <div className="flex min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto whitespace-nowrap">
+                {(["type", "data", "options", "customs"] as TabId[]).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(tab);
+                      setIsSidebarCollapsed(false);
+                    }}
+                    className={`shrink-0 rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                      activeTab === tab
+                        ? "bg-teal-50 text-teal-700"
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }`}
+                  >
+                    {tab === "customs" ? "Customs" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>}
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed((current) => !current)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-600"
+                title={isSidebarCollapsed ? "Show chart sidebar" : "Hide chart sidebar"}
+                aria-label={isSidebarCollapsed ? "Show chart sidebar" : "Hide chart sidebar"}
+              >
+                {isSidebarCollapsed ? <FiChevronsRight className="h-3.5 w-3.5" /> : <FiChevronsLeft className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+          {!isSidebarCollapsed && <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 pt-2">
             <div className="space-y-2 pb-1">
               {/* TYPE TAB */}
               {activeTab === "type" && (
@@ -2067,7 +2633,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                               isSelected={selectedCatalogEntry?.id === entry.id}
                               onSelect={() => {
                                 if (!entry.supported || !entry.chartType) return;
-                                updateNodeConfig(node.id, {
+                                updateChartConfig({
                                   chartCatalogId: entry.id,
                                   chartType: entry.chartType,
                                 } as Partial<ChartConfig>);
@@ -2109,9 +2675,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                       type="text"
                       placeholder="Title"
                       value={config.title || ""}
-                      onChange={(e) => updateNodeConfig(node.id, {
+                      onChange={(e) => updateChartConfig({
                         title: e.target.value.trim() ? e.target.value : undefined,
-                      } as Partial<ChartConfig>)}
+                      } as Partial<ChartConfig>, { syncCustom: false })}
                       className="mt-0.5 w-full rounded border border-gray-200 px-1.5 py-1 text-[10px] outline-none focus:border-teal-400"
                     />
                   </div>
@@ -2121,20 +2687,44 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                       type="text"
                       placeholder="Caption"
                       value={config.caption || ""}
-                      onChange={(e) => updateNodeConfig(node.id, {
+                      onChange={(e) => updateChartConfig({
                         caption: e.target.value.trim() ? e.target.value : undefined,
-                      } as Partial<ChartConfig>)}
+                      } as Partial<ChartConfig>, { syncCustom: false })}
                       className="mt-0.5 w-full rounded border border-gray-200 px-1.5 py-1 text-[10px] outline-none focus:border-teal-400"
                     />
                   </div>
                   <button onClick={() => setActiveTab("data")} className="mt-1 w-full rounded border border-gray-100 py-0.5 text-[9px] text-gray-500 hover:bg-gray-50">← Data</button>
                 </div>
               )}
+
+              {activeTab === "customs" && (
+                <div className="space-y-2 px-1">
+                  <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
+                      <div className="text-[10px] font-medium text-gray-500">Plot</div>
+                      <button
+                        type="button"
+                        onClick={applyCustomDraft}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 transition-colors hover:text-sky-700"
+                      >
+                        Run
+                        <FiPlay className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <textarea
+                      ref={customEditorRef}
+                      value={customDraft}
+                      onChange={(event) => setCustomDraft(event.target.value)}
+                      spellCheck={false}
+                      className="subtle-scrollbar h-[420px] min-h-[260px] w-full resize-none overflow-y-auto overflow-x-hidden bg-white px-3 py-3 font-mono text-[11px] leading-5 text-slate-700 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          </div>}
         </div>
 
-        {/* Chart preview */}
         <div ref={previewRef} className="flex-1 min-w-0 min-h-0">
           <div className="flex h-full min-h-0 flex-col gap-2">
             {config.title && (
@@ -2175,7 +2765,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   <span>{cartogramGuidance}</span>
                 </div>
               </div>
-            ) : !chartReady ? (
+            ) : !previewReady ? (
               <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-gray-500 shadow-sm">
                   <LuChartColumnBig className="h-4 w-4" />
@@ -2188,7 +2778,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               </div>
             ) : (
               <div
-                className="chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg bg-white p-2"
+                className={`chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg bg-white ${isGeospatialChart ? "p-0" : "p-2"}`}
                 dangerouslySetInnerHTML={{ __html: chartMarkup }}
               />
             )}

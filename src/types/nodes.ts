@@ -80,6 +80,9 @@ export interface ChartConfig {
   title?: string;
   caption?: string;
   brushSelection?: BrushSelection;
+  customCode?: string;
+  customEnabled?: boolean;
+  customBaseChartId?: string;
 }
 
 export type ChartType =

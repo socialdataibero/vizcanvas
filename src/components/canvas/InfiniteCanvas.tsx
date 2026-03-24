@@ -33,7 +33,7 @@ import {
 } from "@/hooks/useCanvasTransientState";
 
 const MIN_NODE_WIDTH: Partial<Record<string, number>> = {
-  chart: 380,
+  chart: 640,
 };
 const DEFAULT_MIN_NODE_WIDTH = 260;
 const MIN_NODE_HEIGHT = 140;
