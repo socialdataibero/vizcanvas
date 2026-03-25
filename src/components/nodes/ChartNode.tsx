@@ -20,6 +20,17 @@ import { getColumnOptions, getFieldOrder, getIncompatibleChartConfigPatch } from
 import { chartIconRegistry } from "@/components/charts/picker/chart-icons-lucide-outline";
 import { findGeometryColumn, parseGeometryValue } from "@/lib/geospatial";
 import { inferChartConfigDefaults } from "@/lib/aiChartDefaults";
+import {
+  buildStackedSortOptions,
+  buildTipMarkOptions,
+  computeMaxGroupSum,
+  computePlotSize,
+  computeYMargin,
+  detectsHighVariance,
+  getCompactAxisMargin,
+  getMarginBottomForLabels,
+  getXTickRotation,
+} from "@/lib/chartBarUtils";
 
 interface Props {
   node: DAGNode;
@@ -1243,12 +1254,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     if (!previewEl || typeof ResizeObserver === "undefined") return;
 
     const updateSize = () => {
-      const nextWidth = Math.max(340, Math.floor(previewEl.clientWidth - 16));
-      const nextHeight = Math.max(220, Math.min(420, Math.round(nextWidth * 0.48)));
+      const next = computePlotSize(previewEl.clientWidth, previewEl.clientHeight);
       setPlotSize((current) =>
-        current.width === nextWidth && current.height === nextHeight
+        current.width === next.width && current.height === next.height
           ? current
-          : { width: nextWidth, height: nextHeight }
+          : next
       );
     };
 
@@ -1382,6 +1392,14 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               const reducer = getReducerForColumnName(yColumn);
+              // mejora 1: rotar etiquetas X si hay muchas categorías
+              const uniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueXCount);
+              plotOptions.x = { tickRotate };
+              // mejora 3: ordenar barras por total descendente
+              const sortOpts = buildStackedSortOptions();
               marks.push(
                 Plot.barY(
                   data,
@@ -1391,11 +1409,39 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                       x: xColumn,
                       y: yColumn,
                       fill: colorColumn,
+                      sort: sortOpts,
                     } as Record<string, unknown>
                   )
                 )
               );
+              // mejora 2: tooltip al hover por segmento
+              marks.push(
+                Plot.tip(
+                  data,
+                  Plot.pointerX(
+                    Plot.groupX(
+                      { y: reducer },
+                      buildTipMarkOptions(xColumn, yColumn, colorColumn) as Record<string, unknown>
+                    )
+                  )
+                )
+              );
               marks.push(Plot.ruleY([0]));
+              // mejora 4: escala log si hay alta varianza en los totales por grupo
+              const groupSumValues = Array.from(
+                new Map(
+                  data.reduce((acc, row) => {
+                    const r = row as Record<string, unknown>;
+                    const key = String(r[xColumn]);
+                    const val = typeof r[yColumn] === "number" ? (r[yColumn] as number) : Number(r[yColumn]);
+                    acc.set(key, (acc.get(key) ?? 0) + (Number.isFinite(val) ? val : 0));
+                    return acc;
+                  }, new Map<string, number>())
+                ).values()
+              );
+              if (detectsHighVariance(groupSumValues)) {
+                plotOptions.y = { type: "log" };
+              }
             }
             break;
           case "grouped-bar":
@@ -1403,6 +1449,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               showColorLegend = true;
               legendOptions = getCompactSwatchLegendOptions(plotSize.width);
               const reducer = getReducerForColumnName(yColumn);
+              plotOptions.fx = { label: null, tickRotate: -45 };
+              plotOptions.x = { axis: null };
               marks.push(
                 Plot.barY(
                   data,
@@ -1424,14 +1472,33 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "bar":
           case "barY":
             if (xColumn && yColumn) {
-              if (colorColumn) showColorLegend = true;
+              if (colorColumn) {
+                showColorLegend = true;
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               const reducer = getReducerForColumnName(yColumn);
+              const uniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueXCount);
+              plotOptions.x = { tickRotate };
               marks.push(
                 Plot.barY(
                   data,
                   Plot.groupX(
                     { y: reducer },
                     getBarYMarkOptions(xColumn, yColumn, colorColumn || BASE_CHART_COLOR) as Record<string, unknown>
+                  )
+                )
+              );
+              marks.push(
+                Plot.tip(
+                  data,
+                  Plot.pointerX(
+                    Plot.groupX(
+                      { y: reducer },
+                      buildTipMarkOptions(xColumn, yColumn, colorColumn) as Record<string, unknown>
+                    )
                   )
                 )
               );
@@ -2248,39 +2315,98 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         const { color: variantColorOptions, ...restPlotOptions } = plotOptions as Record<string, unknown> & {
           color?: Record<string, unknown>;
         };
-        const resolvedColorOptions = variantColorOptions
-          ? { ...variantColorOptions, ...(showColorLegend ? { legend: true } : {}) }
-          : showColorLegend
-            ? legendOptions ?? { legend: true }
-            : undefined;
-        const xAxisValues = xColumn ? data.map((row) => (row as Record<string, unknown>)[xColumn]) : [];
-        const yAxisValues = yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : [];
-        const resolvedXAxisOptions = mergeAxisDisplayOptions(
-          restPlotOptions.x,
-          variantId === "grouped-bar"
-            ? getFieldLabel("color", selectedCatalogEntry, chartType)
-            : getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn),
-          xColumn,
-          xAxisValues
-        );
-        const resolvedYAxisOptions = mergeAxisDisplayOptions(
-          restPlotOptions.y,
-          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn),
-          yColumn,
-          yAxisValues
-        );
-        const finalPlotOptions = {
-          ...restPlotOptions,
-          ...(resolvedXAxisOptions ? { x: resolvedXAxisOptions } : {}),
-          ...(resolvedYAxisOptions ? { y: resolvedYAxisOptions } : {}),
-        };
+        // Compute marginLeft first — needed for legend alignment
         const dynamicMarginLeft =
           variantId === "grid-cartogram" || variantId === "grid"
             ? 12
             : variantId === "horizontal-bar" || variantId === "barX"
             ? 110
-            : getNumericAxisMargin(yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : [], 52);
-        const dynamicMarginBottom = variantId === "grid-cartogram" || variantId === "grid" ? 12 : 36;
+            : variantId === "stacked-bar" && xColumn && yColumn
+            ? getCompactAxisMargin(computeMaxGroupSum(data as Record<string, unknown>[], xColumn, yColumn))
+            : computeYMargin(yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : []);
+
+        // Pass marginLeft to the legend so swatches align with the plot area
+        const resolvedColorOptions = variantColorOptions
+          ? { ...variantColorOptions, ...(showColorLegend ? { legend: true } : {}) }
+          : showColorLegend
+            ? { ...(legendOptions ?? { legend: true }), marginLeft: dynamicMarginLeft }
+            : undefined;
+
+        const xAxisValues = xColumn ? data.map((row) => (row as Record<string, unknown>)[xColumn]) : [];
+        // mejora 5: para stacked-bar usar los totales por grupo como referencia del tickFormat
+        const yAxisValues =
+          variantId === "stacked-bar" && xColumn && yColumn
+            ? Array.from(
+                new Map(
+                  data.reduce((acc, row) => {
+                    const r = row as Record<string, unknown>;
+                    const key = String(r[xColumn]);
+                    const val = typeof r[yColumn] === "number" ? (r[yColumn] as number) : Number(r[yColumn]);
+                    acc.set(key, (acc.get(key) ?? 0) + (Number.isFinite(val) ? val : 0));
+                    return acc;
+                  }, new Map<string, number>())
+                ).values()
+              )
+            : yColumn
+            ? data.map((row) => (row as Record<string, unknown>)[yColumn])
+            : [];
+        const suppressXLabel = variantId === "vertical-bar" || variantId === "bar" || variantId === "barY" || variantId === "stacked-bar" || variantId === "grouped-bar";
+        const resolvedXAxisOptionsBase = mergeAxisDisplayOptions(
+          restPlotOptions.x,
+          getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn),
+          xColumn,
+          xAxisValues
+        );
+        const resolvedXAxisOptions = suppressXLabel
+          ? {
+              ...(resolvedXAxisOptionsBase && typeof resolvedXAxisOptionsBase === "object"
+                ? (resolvedXAxisOptionsBase as Record<string, unknown>)
+                : {}),
+              label: null,
+            }
+          : resolvedXAxisOptionsBase;
+        const suppressYLabel = variantId === "horizontal-bar" || variantId === "barX";
+        const resolvedYAxisOptionsBase = mergeAxisDisplayOptions(
+          restPlotOptions.y,
+          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn),
+          yColumn,
+          yAxisValues
+        );
+        const resolvedYAxisOptions = suppressYLabel
+          ? {
+              ...(resolvedYAxisOptionsBase && typeof resolvedYAxisOptionsBase === "object"
+                ? (resolvedYAxisOptionsBase as Record<string, unknown>)
+                : {}),
+              label: null,
+            }
+          : resolvedYAxisOptionsBase;
+        const finalPlotOptions = {
+          ...restPlotOptions,
+          ...(resolvedXAxisOptions ? { x: resolvedXAxisOptions } : {}),
+          ...(resolvedYAxisOptions ? { y: resolvedYAxisOptions } : {}),
+        };
+        // mejora 1: margen inferior basado en longitud real de etiquetas rotadas
+        const xTickRotate =
+          restPlotOptions.x && typeof restPlotOptions.x === "object"
+            ? ((restPlotOptions.x as Record<string, unknown>).tickRotate as number | undefined) ?? 0
+            : 0;
+        const fxTickRotate =
+          restPlotOptions.fx && typeof restPlotOptions.fx === "object"
+            ? ((restPlotOptions.fx as Record<string, unknown>).tickRotate as number | undefined) ?? 0
+            : 0;
+        const xUniqueLabels = xColumn
+          ? Array.from(new Set(data.map((row) => String((row as Record<string, unknown>)[xColumn]))))
+          : [];
+        const fxUniqueLabels = facetColumn
+          ? Array.from(new Set(data.map((row) => String((row as Record<string, unknown>)[facetColumn]))))
+          : [];
+        const dynamicMarginBottom =
+          variantId === "grid-cartogram" || variantId === "grid"
+            ? 12
+            : Math.max(
+                getMarginBottomForLabels(xUniqueLabels, xTickRotate),
+                getMarginBottomForLabels(fxUniqueLabels, fxTickRotate)
+              );
 
         const chart = Plot.plot({
           width: plotSize.width,
@@ -2685,13 +2811,14 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           </div>}
         </div>
 
-        <div ref={previewRef} className="flex-1 min-w-0 min-h-0">
+        <div className="flex-1 min-w-0 min-h-0">
           <div className="flex h-full min-h-0 flex-col gap-2">
             {config.title && (
               <div className="px-1 text-[11px] font-semibold text-gray-700">
                 {config.title}
               </div>
             )}
+            <div ref={previewRef} className="flex-1 min-h-0">
             {data.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 h-40 text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
                 <LuChartColumnBig className="h-8 w-8" />
@@ -2738,10 +2865,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               </div>
             ) : (
               <div
-                className={`chart-container min-h-[160px] flex-1 overflow-hidden rounded-lg bg-white ${isGeospatialChart ? "p-0" : "p-2"}`}
+                className={`chart-container h-full overflow-hidden rounded-lg bg-white ${isGeospatialChart ? "p-0" : "p-2"}`}
                 dangerouslySetInnerHTML={{ __html: chartMarkup }}
               />
             )}
+            </div>
             {config.caption && (
               <div className="px-1 text-[10px] leading-relaxed text-gray-500">
                 {config.caption}
