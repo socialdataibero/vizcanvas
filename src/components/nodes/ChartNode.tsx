@@ -1011,6 +1011,402 @@ function buildCustomStarterCode(
 })`;
   }
 
+  if (selectedVariant === "grouped-bar") {
+    const color = config.colorColumn ?? categoryColumn;
+    const facet = config.facetColumn ?? categoryColumn;
+    const reducer = getReducerForColumnName(numericColumn);
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  fx: { label: null },
+  x: { axis: null },
+  marks: [
+    Plot.barY(data, Plot.groupX({ y: "${reducer}" }, {
+      x: "${color}",
+      y: "${numericColumn}",
+      fill: "${color}",
+      fx: "${facet}"
+    })),
+    Plot.ruleY([0], { stroke: "#94a3b8" })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "stacked-bar") {
+    const color = config.colorColumn ?? categoryColumn;
+    const reducer = getReducerForColumnName(numericColumn);
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  marks: [
+    Plot.barY(data, Plot.groupX({ y: "${reducer}" }, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "${color}"
+    })),
+    Plot.ruleY([0], { stroke: "#94a3b8" })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "histogram" || selectedVariant === "temporal-histogram") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.rectY(data, Plot.binX({ y: "count" }, {
+      x: "${categoryColumn}",
+      fill: "#14b8a6"
+    })),
+    Plot.ruleY([0])
+  ]
+})`;
+  }
+
+  if (selectedVariant === "faceted-histogram") {
+    const facet = config.facetColumn ?? config.colorColumn ?? categoryColumn;
+    const fill = config.colorColumn ?? facet;
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  fy: { label: null },
+  marks: [
+    Plot.rectY(data, Plot.binX({ y: "count" }, {
+      x: "${categoryColumn}",
+      fy: "${facet}",
+      fill: "${fill}"
+    })),
+    Plot.ruleY([0])
+  ]
+})`;
+  }
+
+  if (selectedVariant === "line-chart" || selectedVariant === "line") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.line(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      stroke: "#14b8a6"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "multi-series-line") {
+    const color = config.colorColumn ?? categoryColumn;
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  marks: [
+    Plot.line(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      stroke: "${color}"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "area-chart" || selectedVariant === "area") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.areaY(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "#14b8a6"
+    }),
+    Plot.line(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      stroke: "#0d9488"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "scatterplot" || selectedVariant === "color-scatterplot" || selectedVariant === "scatter") {
+    const fill = config.colorColumn ? `"${config.colorColumn}"` : '"#14b8a6"';
+    return `Plot.plot({
+  width,
+  height,${config.colorColumn ? '\n  color: { legend: true },' : ''}
+  marks: [
+    Plot.dot(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: ${fill}
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "bubble-chart") {
+    const size = config.sizeColumn ?? numericColumn;
+    const fill = config.colorColumn ? `"${config.colorColumn}"` : '"#14b8a6"';
+    return `Plot.plot({
+  width,
+  height,${config.colorColumn ? '\n  color: { legend: true },' : ''}
+  marks: [
+    Plot.dot(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      r: "${size}",
+      fill: ${fill}
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "dot-comparison" || selectedVariant === "dot") {
+    const fill = config.colorColumn ? `"${config.colorColumn}"` : '"#14b8a6"';
+    const reducer = getReducerForColumnName(numericColumn);
+    return `Plot.plot({
+  width,
+  height,${config.colorColumn ? '\n  color: { legend: true },' : ''}
+  marks: [
+    Plot.ruleY([0]),
+    Plot.dot(data, Plot.groupX({ y: "${reducer}" }, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: ${fill}
+    }))
+  ]
+})`;
+  }
+
+  if (selectedVariant === "beeswarm") {
+    const fill = config.colorColumn ? `"${config.colorColumn}"` : '"#14b8a6"';
+    return `Plot.plot({
+  width,
+  height,${config.colorColumn ? '\n  color: { legend: true },' : ''}
+  marks: [
+    Plot.dot(data, Plot.dodgeY({
+      x: "${categoryColumn}",
+      fill: ${fill}
+    }))
+  ]
+})`;
+  }
+
+  if (selectedVariant === "barcode-strip-plot") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.tickX(data, {
+      x: "${categoryColumn}",
+      stroke: "#14b8a6"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "box-plot" || selectedVariant === "box") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.boxY(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "#d1d5db"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "heatmap") {
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true, scheme: "blues" },
+  marks: [
+    Plot.cell(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "${config.colorColumn ?? numericColumn}"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "waffle-chart") {
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  marks: [
+    Plot.waffleY(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: "${config.colorColumn ?? categoryColumn}"
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "waterfall-chart") {
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.barY(data, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}",
+      fill: d => d["${numericColumn}"] >= 0 ? "#10b981" : "#ef4444"
+    }),
+    Plot.ruleY([0])
+  ]
+})`;
+  }
+
+  if (selectedVariant === "treemap") {
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  x: { axis: null },
+  y: { axis: null },
+  marks: [
+    Plot.cell(data, Plot.group({ fill: "count" }, {
+      x: "${categoryColumn}",
+      y: "${numericColumn}"
+    }))
+  ]
+})`;
+  }
+
+  if ((selectedVariant === "dot-map" || selectedVariant === "geoPoint") && geometryColumn) {
+    return `Plot.plot({
+  width,
+  height,
+  projection: {
+    type: "mercator",
+    domain: {
+      type: "FeatureCollection",
+      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}")
+    }
+  },
+  marks: [
+    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"), {
+      fill: "#f8fafc",
+      stroke: "#e2e8f0",
+      strokeWidth: 0.8
+    }),
+    Plot.dot(
+      helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"),
+      Plot.geoCentroid({
+        r: d => d.properties.value ?? 5,
+        fill: "#14b8a6",
+        fillOpacity: 0.75,
+        stroke: "#fff",
+        strokeWidth: 1
+      })
+    )
+  ]
+})`;
+  }
+
+  if ((selectedVariant === "spike-map" || selectedVariant === "spike") && geometryColumn) {
+    return `Plot.plot({
+  width,
+  height,
+  projection: {
+    type: "mercator",
+    domain: {
+      type: "FeatureCollection",
+      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}")
+    }
+  },
+  marks: [
+    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"), {
+      fill: "#e0e0e0",
+      stroke: "white",
+      strokeWidth: 1
+    }),
+    Plot.spike(
+      helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"),
+      Plot.geoCentroid({
+        length: d => d.properties.value ?? 0,
+        stroke: "red",
+        fill: "red"
+      })
+    )
+  ]
+})`;
+  }
+
+  if (selectedVariant === "arc-map" || selectedVariant === "arc") {
+    const x2 = config.x2Column ?? "dest_lon";
+    const y2 = config.y2Column ?? "dest_lat";
+    return `Plot.plot({
+  width,
+  height,
+  projection: "equal-earth",
+  marks: [
+    Plot.sphere(),
+    Plot.arrow(data, {
+      x1: "${categoryColumn}",
+      y1: "${numericColumn}",
+      x2: "${x2}",
+      y2: "${y2}",
+      bend: true,
+      stroke: "#14b8a6",
+      strokeOpacity: 0.45,
+      strokeWidth: 1.5
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "link-chart" || selectedVariant === "link") {
+    const x2 = config.x2Column ?? categoryColumn;
+    const y2 = config.y2Column ?? numericColumn;
+    return `Plot.plot({
+  width,
+  height,
+  marks: [
+    Plot.link(data, {
+      x1: "${categoryColumn}",
+      y1: "${numericColumn}",
+      x2: "${x2}",
+      y2: "${y2}",
+      stroke: "#94a3b8",
+      strokeOpacity: 0.7
+    }),
+    Plot.dot(data, {
+      x: "${x2}",
+      y: "${y2}",
+      fill: "#14b8a6",
+      r: 4
+    })
+  ]
+})`;
+  }
+
+  if (selectedVariant === "sankey-diagram") {
+    return `Plot.plot({
+  width,
+  height,
+  color: { legend: true },
+  marks: [
+    Plot.barX(data, Plot.groupY({ x: "sum" }, {
+      y: "${categoryColumn}",
+      x: "${config.sizeColumn ?? numericColumn}",
+      fill: "${config.colorColumn ?? categoryColumn}"
+    }))
+  ]
+})`;
+  }
+
   const reducer = getReducerForColumnName(config.yColumn ?? numericColumn);
   return `Plot.plot({
   width,
