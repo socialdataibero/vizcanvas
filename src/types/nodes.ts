@@ -77,6 +77,7 @@ export interface ChartConfig {
   lengthColumn?: string;
   labelColumn?: string;
   facetColumn?: string;
+  beeswarmAnchor?: "top" | "middle" | "bottom";
   title?: string;
   caption?: string;
   brushSelection?: BrushSelection;

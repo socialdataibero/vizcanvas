@@ -1184,13 +1184,15 @@ function buildCustomStarterCode(
 
   if (selectedVariant === "beeswarm") {
     const fill = config.colorColumn ? `"${config.colorColumn}"` : '"#14b8a6"';
+    const anchor = config.beeswarmAnchor ?? "middle";
     return `Plot.plot({
   width,
   height,${config.colorColumn ? '\n  color: { legend: true },' : ''}
   marks: [
     Plot.dot(data, Plot.dodgeY({
       x: "${categoryColumn}",
-      fill: ${fill}
+      fill: ${fill},
+      anchor: "${anchor}"
     }))
   ]
 })`;
@@ -1432,12 +1434,18 @@ function parseQuotedFieldOption(code: string, key: string) {
   return match?.[1];
 }
 
+function parseAnchorOption(code: string): "top" | "middle" | "bottom" | undefined {
+  const match = code.match(/anchor\s*:\s*(["']top["']|["']middle["']|["']bottom["'])/);
+  if (!match) return undefined;
+  return match[1].replace(/['"]/g, "") as "top" | "middle" | "bottom";
+}
+
 function parseCustomPlotConfig(
   code: string,
   availableColumns: ColumnInfo[],
   currentConfig?: Pick<
     ChartConfig,
-    "chartType" | "chartCatalogId" | "xColumn" | "yColumn" | "x2Column" | "y2Column" | "colorColumn" | "sizeColumn" | "lengthColumn" | "labelColumn" | "facetColumn"
+    "chartType" | "chartCatalogId" | "xColumn" | "yColumn" | "x2Column" | "y2Column" | "colorColumn" | "sizeColumn" | "lengthColumn" | "labelColumn" | "facetColumn" | "beeswarmAnchor"
   >
 ): Partial<ChartConfig> | null {
   const normalized = code.replace(/\s+/g, " ");
@@ -1546,6 +1554,7 @@ function parseCustomPlotConfig(
       chartCatalogId: "beeswarm",
       xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
       colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+      beeswarmAnchor: parseAnchorOption(code) ?? currentConfig?.beeswarmAnchor ?? "middle",
     };
   }
 
@@ -1784,10 +1793,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     lengthColumn,
     labelColumn,
     facetColumn,
+    beeswarmAnchor,
     customCode,
     customEnabled,
     customBaseChartId,
   } = config;
+  const normalizedBeeswarmAnchor = beeswarmAnchor ?? "middle";
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
   const upstreamNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
@@ -2275,6 +2286,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   Plot.dodgeY({
                     x: xColumn,
                     fill: colorColumn || BASE_CHART_COLOR,
+                    anchor: normalizedBeeswarmAnchor,
                   } as Record<string, unknown>)
                 )
               );
@@ -3125,6 +3137,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
       lengthColumn,
       labelColumn,
       facetColumn,
+      beeswarmAnchor: normalizedBeeswarmAnchor,
     });
     const canSyncBackToStandardChart = Boolean(parsedConfig && Object.keys(parsedConfig).length > 0);
     updateNodeConfig(node.id, {
@@ -3355,6 +3368,24 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 <div className="space-y-2">
                   <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Encodings</div>
                   {getFieldOrder(selectedCatalogEntry, config.chartType).map(renderEncodingField)}
+                  {selectedCatalogEntry?.id === "beeswarm" && (
+                    <div>
+                      <label className="text-[9px] font-medium text-gray-500 uppercase">Anchor</label>
+                      <select
+                        value={normalizedBeeswarmAnchor}
+                        onChange={(e) =>
+                          updateChartConfig({
+                            beeswarmAnchor: e.target.value as "top" | "middle" | "bottom",
+                          } as Partial<ChartConfig>)
+                        }
+                        className="mt-0.5 w-full rounded border border-gray-200 px-1.5 py-1 text-[10px] outline-none focus:border-teal-400"
+                      >
+                        <option value="top">top</option>
+                        <option value="middle">middle</option>
+                        <option value="bottom">bottom</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="flex gap-1 pt-1">
                     <button onClick={() => setActiveTab("type")} className="flex-1 rounded border border-gray-100 py-0.5 text-[9px] text-gray-500 hover:bg-gray-50">← Type</button>
                     <button onClick={() => setActiveTab("options")} className="flex-1 rounded border border-gray-100 py-0.5 text-[9px] text-gray-500 hover:bg-gray-50">Options →</button>
