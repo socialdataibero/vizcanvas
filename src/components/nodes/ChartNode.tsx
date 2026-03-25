@@ -1432,9 +1432,180 @@ function parseQuotedFieldOption(code: string, key: string) {
   return match?.[1];
 }
 
-function parseCustomPlotConfig(code: string, availableColumns: ColumnInfo[]): Partial<ChartConfig> | null {
+function parseCustomPlotConfig(
+  code: string,
+  availableColumns: ColumnInfo[],
+  currentConfig?: Pick<
+    ChartConfig,
+    "chartType" | "chartCatalogId" | "xColumn" | "yColumn" | "x2Column" | "y2Column" | "colorColumn" | "sizeColumn" | "lengthColumn" | "labelColumn" | "facetColumn"
+  >
+): Partial<ChartConfig> | null {
   const normalized = code.replace(/\s+/g, " ");
   const columnNames = new Set(availableColumns.map((column) => column.name));
+  const asColumn = (value?: string) => (value && columnNames.has(value) ? value : undefined);
+  const currentVariant = currentConfig?.chartCatalogId;
+
+  if (currentVariant === "grouped-bar") {
+    return {
+      chartType: "bar",
+      chartCatalogId: "grouped-bar",
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn:
+        asColumn(parseQuotedFieldOption(code, "x")) ??
+        asColumn(parseQuotedFieldOption(code, "fill")) ??
+        currentConfig?.colorColumn,
+      facetColumn: asColumn(parseQuotedFieldOption(code, "fx")) ?? currentConfig?.facetColumn,
+    };
+  }
+
+  if (currentVariant === "stacked-bar") {
+    return {
+      chartType: "stackedBar",
+      chartCatalogId: "stacked-bar",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "histogram" || currentVariant === "temporal-histogram") {
+    return {
+      chartType: "histogram",
+      chartCatalogId: currentVariant,
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+    };
+  }
+
+  if (currentVariant === "faceted-histogram") {
+    return {
+      chartType: "histogram",
+      chartCatalogId: "faceted-histogram",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      facetColumn:
+        asColumn(parseQuotedFieldOption(code, "fy")) ??
+        asColumn(parseQuotedFieldOption(code, "fx")) ??
+        currentConfig?.facetColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "multi-series-line") {
+    return {
+      chartType: "line",
+      chartCatalogId: "multi-series-line",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "stroke")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "area-chart") {
+    return {
+      chartType: "area",
+      chartCatalogId: "area-chart",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "bubble-chart") {
+    return {
+      chartType: "scatter",
+      chartCatalogId: "bubble-chart",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      sizeColumn: asColumn(parseQuotedFieldOption(code, "r")) ?? currentConfig?.sizeColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "scatterplot" || currentVariant === "color-scatterplot") {
+    return {
+      chartType: "scatter",
+      chartCatalogId: currentVariant,
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "dot-comparison") {
+    return {
+      chartType: "dot",
+      chartCatalogId: "dot-comparison",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "beeswarm") {
+    return {
+      chartType: "dot",
+      chartCatalogId: "beeswarm",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "barcode-strip-plot") {
+    return {
+      chartType: "dot",
+      chartCatalogId: "barcode-strip-plot",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+    };
+  }
+
+  if (currentVariant === "box-plot") {
+    return {
+      chartType: "box",
+      chartCatalogId: "box-plot",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+    };
+  }
+
+  if (currentVariant === "heatmap") {
+    return {
+      chartType: "heatmap",
+      chartCatalogId: "heatmap",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "waffle-chart") {
+    return {
+      chartType: "waffle",
+      chartCatalogId: "waffle-chart",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
+    };
+  }
+
+  if (currentVariant === "waterfall-chart") {
+    return {
+      chartType: "waterfall",
+      chartCatalogId: "waterfall-chart",
+      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+    };
+  }
+
+  if (currentVariant === "arc-map" || currentVariant === "link-chart") {
+    return {
+      chartType: currentVariant === "arc-map" ? "arc" : "link",
+      chartCatalogId: currentVariant,
+      xColumn: asColumn(parseQuotedFieldOption(code, "x1")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y1")) ?? currentConfig?.yColumn,
+      x2Column: asColumn(parseQuotedFieldOption(code, "x2")) ?? currentConfig?.x2Column,
+      y2Column: asColumn(parseQuotedFieldOption(code, "y2")) ?? currentConfig?.y2Column,
+      colorColumn: asColumn(parseQuotedFieldOption(code, "stroke")) ?? currentConfig?.colorColumn,
+    };
+  }
 
   if (normalized.includes("Plot.barY(")) {
     const x = parseQuotedFieldOption(code, "x");
@@ -2937,11 +3108,24 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   };
 
   const applyCustomDraft = () => {
-    const parsedConfig = parseCustomPlotConfig(customDraft, columns);
+    const parsedConfig = parseCustomPlotConfig(customDraft, columns, {
+      chartType,
+      chartCatalogId,
+      xColumn,
+      yColumn,
+      x2Column,
+      y2Column,
+      colorColumn,
+      sizeColumn,
+      lengthColumn,
+      labelColumn,
+      facetColumn,
+    });
+    const canSyncBackToStandardChart = Boolean(parsedConfig && Object.keys(parsedConfig).length > 0);
     updateNodeConfig(node.id, {
       ...(parsedConfig ?? {}),
       customCode: customDraft,
-      customEnabled: true,
+      customEnabled: canSyncBackToStandardChart ? false : true,
       customBaseChartId: selectedCatalogEntry?.id ?? customBaseChartId ?? chartCatalogId,
     } as Partial<ChartConfig>);
   };
