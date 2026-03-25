@@ -1284,7 +1284,15 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     const incompatiblePatch = getCompatibleConfigPatch(config);
     const sanitizedConfig = { ...config, ...incompatiblePatch } as ChartConfig;
     const defaultsPatch = inferChartConfigDefaults(sanitizedConfig, columns);
-    const configPatch = { ...incompatiblePatch, ...defaultsPatch };
+    const merged = { ...incompatiblePatch, ...defaultsPatch };
+
+    // Only keep entries that actually differ from the current config to avoid loops
+    const configPatch: Partial<ChartConfig> = {};
+    for (const [key, value] of Object.entries(merged)) {
+      if (!Object.is((config as Record<string, unknown>)[key], value)) {
+        (configPatch as Record<string, unknown>)[key] = value;
+      }
+    }
     if (Object.keys(configPatch).length === 0) return;
 
     updateNodeConfig(node.id, configPatch);
@@ -1630,7 +1638,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "faceted-histogram":
           case "histogram":
             if (xColumn) {
-              const histogramOptions: Record<string, unknown> = { x: xColumn };
+              const histogramOptions: Record<string, unknown> = { x: xColumn, fill: BASE_CHART_COLOR };
               if (variantId === "faceted-histogram" && facetColumn) {
                 histogramOptions.fy = facetColumn;
                 histogramOptions.fill = colorColumn || facetColumn;
@@ -1686,7 +1694,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (xColumn) {
               if (colorColumn) {
                 showColorLegend = true;
-                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+                const colorColInfo = columns.find((c) => c.name === colorColumn);
+                const isNumericColor = colorColInfo ? isNumericType(colorColInfo.type) : false;
+                if (isNumericColor) {
+                  plotOptions.color = { scheme: "greens" };
+                } else {
+                  legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+                }
               }
               marks.push(
                 Plot.dot(
@@ -1724,6 +1738,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 reducer,
                 colorColumn
               );
+              const dotUniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const dotTickRotate = getXTickRotation(dotUniqueXCount);
+              plotOptions.x = { tickRotate: dotTickRotate };
               marks.push(Plot.ruleY([0]));
               marks.push(
                 Plot.dot(dotData, {
@@ -1731,6 +1750,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   y: "value",
                   fill: colorColumn ? "group" : BASE_CHART_COLOR,
                 })
+              );
+              marks.push(
+                Plot.tip(dotData, Plot.pointerX({
+                  x: "category",
+                  y: "value",
+                  ...(colorColumn ? { fill: "group" } : {}),
+                }))
               );
             }
             break;
@@ -2350,7 +2376,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             : yColumn
             ? data.map((row) => (row as Record<string, unknown>)[yColumn])
             : [];
-        const suppressXLabel = variantId === "vertical-bar" || variantId === "bar" || variantId === "barY" || variantId === "stacked-bar" || variantId === "grouped-bar";
+        const suppressXLabel = variantId === "vertical-bar" || variantId === "bar" || variantId === "barY" || variantId === "stacked-bar" || variantId === "grouped-bar" || variantId === "dot-comparison" || variantId === "dot";
         const resolvedXAxisOptionsBase = mergeAxisDisplayOptions(
           restPlotOptions.x,
           getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn),

@@ -684,7 +684,7 @@ body {
   flex-direction: column;
 }
 
-.chart-container > figure > svg {
+.chart-container > figure > svg:not([class$="-ramp"]) {
   width: 100%;
   flex: 1;
   min-height: 0;
@@ -716,6 +716,13 @@ body {
 .chart-container .plot-swatches {
   font-size: 9px !important;
   margin-bottom: 0.35em !important;
+}
+
+/* Continuous color ramp legend — keep compact */
+.chart-container > figure > svg[class$="-ramp"] {
+  flex: none;
+  max-width: 240px;
+  align-self: center;
 }
 
 /* Animation */

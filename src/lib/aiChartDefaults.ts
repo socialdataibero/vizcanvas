@@ -1,3 +1,4 @@
+import { CHART_CATALOG } from "@/lib/chartCatalog";
 import { applyColumnSemanticsToColumns } from "@/lib/columnSemantics";
 import { ChartConfig, ColumnInfo } from "@/types/nodes";
 
@@ -163,5 +164,40 @@ export function inferChartConfigDefaults(config: ChartConfig, columns: ColumnInf
     return patch;
   }
 
-  return {};
+  // Generic fallback for common chart types (bar, dot, line, area, etc.)
+  const patch: Partial<ChartConfig> = {};
+
+  // Look up catalog entry to know which fields this chart variant supports
+  const catalogEntry = config.chartCatalogId
+    ? CHART_CATALOG.find((e) => e.id === config.chartCatalogId)
+    : undefined;
+  const supportedFields = catalogEntry?.fields;
+
+  const categoricalColumns = normalizedColumns.filter(
+    (c) => isCategoricalColumn(c) && !isSpatialColumn(c) && !isIdentifierLikeColumn(c)
+  );
+  const numericColumns = normalizedColumns.filter(
+    (c) => isNumericColumn(c) && !isSpatialColumn(c) && !isIdentifierLikeColumn(c)
+  );
+
+  const hasField = (field: string) => !supportedFields || field in supportedFields;
+
+  if (!config.xColumn && hasField("x")) {
+    // For charts needing a category on X (bar, dot, stackedBar): prefer categorical
+    // For charts needing a value on X (histogram, beeswarm): prefer numeric
+    const needsNumericX = config.chartType === "dot" || config.chartType === "histogram";
+    const xCandidate = needsNumericX
+      ? numericColumns[0] ?? categoricalColumns[0]
+      : categoricalColumns[0] ?? numericColumns[0];
+    if (xCandidate) patch.xColumn = xCandidate.name;
+  }
+
+  if (!config.yColumn && hasField("y")) {
+    const excluded = patch.xColumn ?? config.xColumn ?? "";
+    const yCandidate = numericColumns.find((c) => c.name !== excluded)
+      ?? normalizedColumns.find((c) => c.name !== excluded && !isSpatialColumn(c));
+    if (yCandidate) patch.yColumn = yCandidate.name;
+  }
+
+  return patch;
 }
