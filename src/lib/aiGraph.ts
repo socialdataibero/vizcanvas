@@ -550,7 +550,7 @@ function inferChartCatalogId(chartType: ChartType | undefined, rawConfig: Record
     case "dot":
       return "dot-comparison";
     case "histogram":
-      return coerceString(rawConfig.facetColumn ?? rawConfig.facet) ? "faceted-histogram" : "histogram";
+      return coerceString(rawConfig.facetColumn ?? rawConfig.facet) ? "faceted-dodge" : "histogram";
     case "box":
       return "box-plot";
     case "stackedBar":

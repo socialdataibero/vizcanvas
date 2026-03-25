@@ -151,7 +151,7 @@ export function getColumnOptions(
       return field === "x" ? allColumns : [];
     case "temporal-histogram":
       return field === "x" ? temporalOrAll : [];
-    case "faceted-histogram":
+    case "faceted-dodge":
       if (field === "x") return numericOrAll;
       if (field === "facet" || field === "color") return allColumns;
       return [];

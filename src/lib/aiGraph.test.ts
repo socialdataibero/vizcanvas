@@ -83,7 +83,7 @@ describe("normalizeAIGraphPlan chart variants", () => {
       { id: "grouped", config: { chartType: "bar", chartCatalogId: "grouped-bar" } },
       { id: "multi_line", config: { chartType: "line", chartCatalogId: "multi-series-line" } },
       { id: "bubble", config: { chartType: "scatter", chartCatalogId: "bubble-chart" } },
-      { id: "faceted_histogram", config: { chartType: "histogram", chartCatalogId: "faceted-histogram" } },
+      { id: "faceted_histogram", config: { chartType: "histogram", chartCatalogId: "faceted-dodge" } },
     ]);
   });
 

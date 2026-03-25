@@ -186,13 +186,13 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     fields: { x: "required", y: "required" },
   },
   {
-    id: "faceted-histogram",
+    id: "faceted-dodge",
     label: "Faceted",
     iconName: "ChartFaceted",
     section: "DISTRIBUTION",
-    description: "Small-multiple histograms split by a category.",
+    description: "Faceted dodge plot split by a category.",
     supported: true,
-    chartType: "histogram",
+    chartType: "dot",
     fields: { x: "required", facet: "required", color: "optional" },
   },
   {

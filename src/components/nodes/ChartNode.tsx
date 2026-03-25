@@ -315,6 +315,40 @@ function injectSvgStyle(markup: string, style: string) {
   return markup.replace("<svg", `<svg style="${style}"`);
 }
 
+function compactSwatchLegendMarkup(markup: string) {
+  const prefixMatch = markup.match(/class="([^"]*?(plot-[^"\s]+))-swatches\b/);
+  const prefix = prefixMatch?.[2];
+  if (!prefix || !markup.includes(`${prefix}-swatches-wrap`)) return markup;
+
+  const compactLegendStyle = `<style>
+:where(.${prefix}-swatches) {
+  font-size: 9px !important;
+  line-height: 1.05;
+  margin-bottom: 0.35em !important;
+}
+:where(.${prefix}-swatches-wrap) {
+  align-items: flex-start !important;
+  min-height: 22px !important;
+  gap: 4px 6px;
+}
+:where(.${prefix}-swatches-wrap .${prefix}-swatch) {
+  margin-right: 0 !important;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.${prefix}-swatch > svg) {
+  width: 10px;
+  height: 10px;
+  margin-right: 0.35em !important;
+  flex: none;
+}
+</style>`;
+
+  return markup.replace("</style>", `</style>${compactLegendStyle}`);
+}
+
 function isNumericType(type: string): boolean {
   return /int|float|double|decimal|numeric|real|bigint|smallint|tinyint/i.test(type);
 }
@@ -413,7 +447,7 @@ function getFieldLabel(
       ) {
         return "Category";
       }
-      if (entry?.id === "barcode-strip-plot" || entry?.id === "beeswarm" || entry?.id === "histogram" || entry?.id === "faceted-histogram") {
+      if (entry?.id === "barcode-strip-plot" || entry?.id === "beeswarm" || entry?.id === "histogram" || entry?.id === "faceted-dodge") {
         return "Value";
       }
       if (entry?.id === "waffle-chart" || entry?.id === "stacked-bar") return "Category";
@@ -480,7 +514,7 @@ function getFieldLabel(
       return "Label";
     case "facet":
       if (entry?.id === "grouped-bar") return "Group";
-      if (entry?.id === "faceted-histogram") return "Group";
+      if (entry?.id === "faceted-dodge") return "Group";
       return "Facet";
   }
 }
@@ -1065,21 +1099,20 @@ function buildCustomStarterCode(
 })`;
   }
 
-  if (selectedVariant === "faceted-histogram") {
+  if (selectedVariant === "faceted-dodge") {
     const facet = config.facetColumn ?? config.colorColumn ?? categoryColumn;
     const fill = config.colorColumn ?? facet;
     return `Plot.plot({
   width,
   height,
+  y: { grid: true },
   color: { legend: true },
-  fy: { label: null },
   marks: [
-    Plot.rectY(data, Plot.binX({ y: "count" }, {
-      x: "${categoryColumn}",
-      fy: "${facet}",
+    Plot.dot(data, Plot.dodgeX("middle", {
+      fx: "${facet}",
+      y: "${categoryColumn}",
       fill: "${fill}"
-    })),
-    Plot.ruleY([0])
+    }))
   ]
 })`;
   }
@@ -1484,13 +1517,15 @@ function parseCustomPlotConfig(
     };
   }
 
-  if (currentVariant === "faceted-histogram") {
+  if (currentVariant === "faceted-dodge") {
     return {
-      chartType: "histogram",
-      chartCatalogId: "faceted-histogram",
-      xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      chartType: "dot",
+      chartCatalogId: "faceted-dodge",
+      xColumn:
+        asColumn(parseQuotedFieldOption(code, "y")) ??
+        asColumn(parseQuotedFieldOption(code, "x")) ??
+        currentConfig?.xColumn,
       facetColumn:
-        asColumn(parseQuotedFieldOption(code, "fy")) ??
         asColumn(parseQuotedFieldOption(code, "fx")) ??
         currentConfig?.facetColumn,
       colorColumn: asColumn(parseQuotedFieldOption(code, "fill")) ?? currentConfig?.colorColumn,
@@ -2213,16 +2248,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             }
             break;
           case "temporal-histogram":
-          case "faceted-histogram":
           case "histogram":
             if (xColumn) {
               const histogramOptions: Record<string, unknown> = { x: xColumn, fill: BASE_CHART_COLOR };
-              if (variantId === "faceted-histogram" && facetColumn) {
-                histogramOptions.fy = facetColumn;
-                histogramOptions.fill = colorColumn || facetColumn;
-                showColorLegend = Boolean(colorColumn || facetColumn);
-                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
-              }
               marks.push(
                 Plot.rectY(
                   data,
@@ -2233,6 +2261,29 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 )
               );
               marks.push(Plot.ruleY([0]));
+            }
+            break;
+          case "faceted-dodge":
+            if (xColumn && facetColumn) {
+              showGrid = true;
+              showColorLegend = Boolean(colorColumn || facetColumn);
+              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              const uniqueFacetCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[facetColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueFacetCount);
+              plotOptions.fx = { label: null, tickRotate };
+              plotOptions.x = { axis: null };
+              marks.push(
+                Plot.dot(
+                  data,
+                  Plot.dodgeX("middle", {
+                    fx: facetColumn,
+                    y: xColumn,
+                    fill: colorColumn || facetColumn,
+                  } as Record<string, unknown>)
+                )
+              );
             }
             break;
           case "scatterplot":
@@ -2933,7 +2984,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             ? 110
             : variantId === "stacked-bar" && xColumn && yColumn
             ? getCompactAxisMargin(computeMaxGroupSum(data as Record<string, unknown>[], xColumn, yColumn))
-            : computeYMargin(yColumn ? data.map((row) => (row as Record<string, unknown>)[yColumn]) : []);
+            : computeYMargin(
+                variantId === "faceted-dodge" && xColumn
+                  ? data.map((row) => (row as Record<string, unknown>)[xColumn])
+                  : yColumn
+                    ? data.map((row) => (row as Record<string, unknown>)[yColumn])
+                    : []
+              );
 
         // Pass marginLeft to the legend so swatches align with the plot area
         const resolvedColorOptions = variantColorOptions
@@ -2957,6 +3014,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                   }, new Map<string, number>())
                 ).values()
               )
+            : variantId === "faceted-dodge" && xColumn
+            ? data.map((row) => (row as Record<string, unknown>)[xColumn])
             : yColumn
             ? data.map((row) => (row as Record<string, unknown>)[yColumn])
             : [];
@@ -2978,8 +3037,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         const suppressYLabel = variantId === "horizontal-bar" || variantId === "barX";
         const resolvedYAxisOptionsBase = mergeAxisDisplayOptions(
           restPlotOptions.y,
-          getAxisLabel("y", selectedCatalogEntry, chartType, yColumn, xColumn),
-          yColumn,
+          getAxisLabel("y", selectedCatalogEntry, chartType, variantId === "faceted-dodge" ? xColumn : yColumn, xColumn),
+          variantId === "faceted-dodge" ? xColumn : yColumn,
           yAxisValues
         );
         const resolvedYAxisOptions = suppressYLabel
@@ -3025,13 +3084,23 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           marginBottom: dynamicMarginBottom,
           marks,
           grid: showGrid,
-          ...(variantId === "faceted-histogram" ? { fy: { label: null } } : {}),
+          ...(variantId === "faceted-dodge"
+            ? {
+                fx:
+                  restPlotOptions.fx && typeof restPlotOptions.fx === "object"
+                    ? { label: null, ...(restPlotOptions.fx as Record<string, unknown>) }
+                    : { label: null },
+              }
+            : {}),
           ...(resolvedColorOptions ? { color: resolvedColorOptions } : {}),
           ...finalPlotOptions,
           style: { fontSize: "10px", background: "transparent" },
         });
         if (!cancelled) {
           let html = isGeospatialChart ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
+          if (showColorLegend && !variantColorOptions) {
+            html = compactSwatchLegendMarkup(html);
+          }
           if (isSpikeMap) {
             html = injectSvgStyle(html, "transform: translateX(-28px);");
           }

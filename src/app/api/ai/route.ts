@@ -137,7 +137,7 @@ Rules for graph planning:
 - Prefer "sql" for custom calculations, filters, renames, CASE logic, CTEs, or complex transformations.
 - Use "table" when a preview table would help.
 - Use "chart" for visualization and choose one supported chartType: bar, barX, barY, line, area, scatter, dot, histogram, pie, heatmap, box, stackedBar, waffle, waterfall, treemap, grid, link, choropleth, geoPoint, spike, arc, sankey.
-- When you need a specific chart variant from the catalog, also set chartCatalogId explicitly. Examples: grouped-bar, multi-series-line, bubble-chart, faceted-histogram, dot-map, spike-map, grid-cartogram.
+- When you need a specific chart variant from the catalog, also set chartCatalogId explicitly. Examples: grouped-bar, multi-series-line, bubble-chart, faceted-dodge, dot-map, spike-map, grid-cartogram.
 - When creating a chart node, fill its required field mappings whenever they can be inferred from the available columns.
 - For choropleth charts, set xColumn to the feature label or region key and yColumn to the numeric metric. Do not use the geometry column as xColumn.
 - For spike maps, set xColumn to the feature label or region key and lengthColumn to the numeric metric. Do not require or set yColumn.
