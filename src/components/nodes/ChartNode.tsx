@@ -2330,6 +2330,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           case "box-plot":
           case "box":
             if (xColumn && yColumn) {
+              const uniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueXCount);
+              plotOptions.x = { tickRotate };
               marks.push(
                 Plot.boxY(data, { x: xColumn, y: yColumn } as Record<string, unknown>)
               );
