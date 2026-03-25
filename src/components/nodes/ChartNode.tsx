@@ -477,6 +477,7 @@ function getFieldLabel(
       if (entry?.id === "heatmap") return "Row";
       if (entry?.id === "grid-cartogram") return "Grid Y";
       if (entry?.id === "link-chart") return "Start Y";
+      if (entry?.id === "barcode-strip-plot") return "Category";
       if (entry?.id === "horizontal-bar") return "Category";
       return "Y";
     case "x2":
@@ -496,6 +497,7 @@ function getFieldLabel(
       if (entry?.id === "treemap") return "Group";
       if (entry?.id === "grid-cartogram" || entry?.id === "heatmap") return "Value";
       if (entry?.id === "link-chart") return "Color";
+      if (entry?.id === "barcode-strip-plot") return "Group";
       if (entry?.id === "grouped-bar" || entry?.id === "multi-series-line") {
         return "Series";
       }
@@ -1232,6 +1234,32 @@ function buildCustomStarterCode(
   }
 
   if (selectedVariant === "barcode-strip-plot") {
+    if (config.yColumn && config.colorColumn) {
+      return `Plot.plot({
+  width,
+  height,
+  x: {
+    grid: true,
+    label: "${categoryColumn} (%) →",
+    percent: true
+  },
+  y: {
+    domain: Array.from(new Set(data.map((d) => d["${config.yColumn}"]))),
+    reverse: true,
+    label: "↑ ${config.yColumn}",
+    labelAnchor: "top"
+  },
+  marks: [
+    Plot.ruleX([0]),
+    Plot.tickX(data, Plot.normalizeX("sum", {
+      z: "${config.colorColumn}",
+      x: "${categoryColumn}",
+      y: "${config.yColumn}"
+    }))
+  ]
+})`;
+    }
+
     return `Plot.plot({
   width,
   height,
@@ -1598,6 +1626,11 @@ function parseCustomPlotConfig(
       chartType: "dot",
       chartCatalogId: "barcode-strip-plot",
       xColumn: asColumn(parseQuotedFieldOption(code, "x")) ?? currentConfig?.xColumn,
+      yColumn: asColumn(parseQuotedFieldOption(code, "y")) ?? currentConfig?.yColumn,
+      colorColumn:
+        asColumn(parseQuotedFieldOption(code, "z")) ??
+        asColumn(parseQuotedFieldOption(code, "stroke")) ??
+        currentConfig?.colorColumn,
     };
   }
 
@@ -2345,12 +2378,40 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "barcode-strip-plot":
             if (xColumn) {
-              marks.push(
-                Plot.tickX(data, {
-                  x: xColumn,
-                  stroke: BASE_CHART_COLOR,
-                } as Record<string, unknown>)
-              );
+              if (yColumn && colorColumn) {
+                showGrid = true;
+                plotOptions.x = {
+                  grid: true,
+                  label: `${xColumn} (%) →`,
+                  percent: true,
+                };
+                plotOptions.y = {
+                  domain: Array.from(
+                    new Set(data.map((row) => (row as Record<string, unknown>)[yColumn]))
+                  ),
+                  reverse: true,
+                  label: `↑ ${yColumn}`,
+                  labelAnchor: "top",
+                };
+                marks.push(Plot.ruleX([0], { stroke: "#94a3b8" }));
+                marks.push(
+                  Plot.tickX(
+                    data,
+                    Plot.normalizeX("sum", {
+                      z: colorColumn,
+                      x: xColumn,
+                      y: yColumn,
+                    } as Record<string, unknown>)
+                  )
+                );
+              } else {
+                marks.push(
+                  Plot.tickX(data, {
+                    x: xColumn,
+                    stroke: BASE_CHART_COLOR,
+                  } as Record<string, unknown>)
+                );
+              }
             }
             break;
           case "dot-comparison":
@@ -2981,6 +3042,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           variantId === "grid-cartogram" || variantId === "grid"
             ? 12
             : variantId === "horizontal-bar" || variantId === "barX"
+              || (variantId === "barcode-strip-plot" && Boolean(yColumn))
             ? 110
             : variantId === "stacked-bar" && xColumn && yColumn
             ? getCompactAxisMargin(computeMaxGroupSum(data as Record<string, unknown>[], xColumn, yColumn))

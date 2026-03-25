@@ -184,6 +184,9 @@ export function getColumnOptions(
       if (field === "x") return categoricalOrAll;
       return allColumns;
     case "barcode-strip-plot":
+      if (field === "x") return numericOrAll;
+      if (field === "y" || field === "color") return categoricalOrAll;
+      return allColumns;
     case "beeswarm":
       return field === "x" ? numericOrAll : allColumns;
     case "heatmap":

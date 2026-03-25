@@ -203,7 +203,7 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     description: "Each record rendered as a thin tick.",
     supported: true,
     chartType: "dot",
-    fields: { x: "required" },
+    fields: { x: "required", y: "optional", color: "optional" },
   },
   {
     id: "heatmap",

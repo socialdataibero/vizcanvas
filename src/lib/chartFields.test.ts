@@ -76,4 +76,27 @@ describe("getIncompatibleChartConfigPatch", () => {
       facetColumn: undefined,
     });
   });
+
+  it("keeps categorical band and group fields for normalized strip charts", () => {
+    const columns: ColumnInfo[] = [
+      { name: "population", type: "DOUBLE", nullable: false },
+      { name: "age", type: "VARCHAR", nullable: false },
+      { name: "state", type: "VARCHAR", nullable: false },
+    ];
+    const config: ChartConfig = {
+      chartType: "dot",
+      chartCatalogId: "barcode-strip-plot",
+      xColumn: "population",
+      yColumn: "age",
+      colorColumn: "state",
+    };
+
+    expect(
+      getIncompatibleChartConfigPatch(
+        config,
+        getChartCatalogEntry(config.chartCatalogId, config.chartType),
+        columns
+      )
+    ).toEqual({});
+  });
 });

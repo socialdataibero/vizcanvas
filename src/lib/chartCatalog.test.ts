@@ -64,4 +64,14 @@ describe("chartCatalog", () => {
       },
     });
   });
+
+  it("exposes optional category and group fields for strip charts", () => {
+    expect(getChartCatalogEntry("barcode-strip-plot", "dot")).toMatchObject({
+      fields: {
+        x: "required",
+        y: "optional",
+        color: "optional",
+      },
+    });
+  });
 });
