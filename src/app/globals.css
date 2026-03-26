@@ -357,17 +357,18 @@ body {
 
 .preview-table th {
   background: #f8fafc;
-  padding: 5px 10px;
+  padding: 7px 10px 8px;
   text-align: left;
   font-weight: 600;
   border-bottom: 1.5px solid #e2e8f0;
   position: sticky;
   top: 0;
-  white-space: nowrap;
   cursor: pointer;
   font-size: 11px;
   color: #374151;
   z-index: 1;
+  vertical-align: top;
+  min-width: 120px;
 }
 
 .preview-table th:hover {
@@ -390,6 +391,81 @@ body {
 
 .preview-table tr:hover td {
   background: #f8fafc;
+}
+
+.preview-header-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 7px;
+}
+
+.preview-header-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.preview-header-sort {
+  font-size: 10px;
+  color: #14b8a6;
+  flex-shrink: 0;
+}
+
+.preview-header-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 34px;
+}
+
+.preview-header-meta {
+  font-size: 9px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.preview-header-empty {
+  font-size: 10px;
+  color: #cbd5e1;
+  line-height: 18px;
+}
+
+.preview-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+
+.preview-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 88px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e6fffb;
+  color: #0f766e;
+  font-size: 9.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-chip-more {
+  font-size: 9px;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 /* Category chips (highlighted text values) */
@@ -440,13 +516,17 @@ body {
   height: 20px;
 }
 
+.mini-sparkline--header {
+  height: 18px;
+}
+
 .mini-sparkline .bar {
   flex: 1;
-  background: var(--accent-light);
+  background: rgba(20, 184, 166, 0.16);
   border-radius: 1px 1px 0 0;
   min-width: 2px;
   transition: background 0.15s;
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(20, 184, 166, 0.9);
   border-bottom: none;
 }
 

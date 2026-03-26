@@ -39,6 +39,10 @@ function isTextType(type: string): boolean {
   return /varchar|text|char|string|category/i.test(type) || (!isNumericType(type) && !/date|timestamp|time|bool/i.test(type));
 }
 
+function isDateType(type: string): boolean {
+  return /date|timestamp|time/i.test(type);
+}
+
 /** Build mini sparkline: 10 bars from data distribution */
 function buildSparkline(rows: Record<string, unknown>[], col: ColumnInfo): number[] {
   const vals = rows.map((r) => r[col.name]).filter((v) => v !== null && v !== undefined);
@@ -73,6 +77,17 @@ function buildCategorySummary(rows: Record<string, unknown>[], colName: string):
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([label, count]) => ({ label, count, pct: count / total }));
+}
+
+function countDistinctValues(rows: Record<string, unknown>[], colName: string) {
+  return new Set(rows.map((row) => String(row[colName] ?? "∅"))).size;
+}
+
+function formatCompactCount(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    notation: value >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+  }).format(value);
 }
 
 export default function TablePreview({
@@ -147,7 +162,6 @@ export default function TablePreview({
       <div className="subtle-scrollbar min-h-0 flex-1 overflow-auto">
         <table className="preview-table">
           <thead>
-            {/* Column header row */}
             <tr>
               {result.columns.map((col) => {
                 const { icon, cls } = getColTypeIcon(col.type);
@@ -158,68 +172,81 @@ export default function TablePreview({
                     onContextMenu={(e) => handleColRightClick(e, col.name)}
                     className={`${onSort ? "cursor-pointer" : ""} ${sortColumn === col.name ? "sorted" : ""}`}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="preview-header-top">
                       <span className={cls}>{icon}</span>
-                      <span className="truncate max-w-[120px]">{col.name}</span>
+                      <span className="preview-header-name" title={col.name}>{col.name}</span>
                       {sortColumn === col.name && (
-                        <span className="text-[10px]">{sortDirection === "asc" ? "↑" : "↓"}</span>
+                        <span className="preview-header-sort">{sortDirection === "asc" ? "↑" : "↓"}</span>
                       )}
                     </div>
+                    {!presentation && (
+                      <div className="preview-header-bottom">
+                        {isNumericType(col.type) ? (
+                          <>
+                            {(() => {
+                              const bars = buildSparkline(rows, col);
+                              const numericCount = rows.filter((row) => row[col.name] !== null && row[col.name] !== undefined).length;
+                              return (
+                                <>
+                                  {bars.length > 0 ? (
+                                    <div className="mini-sparkline mini-sparkline--header">
+                                      {bars.map((h, i) => (
+                                        <div
+                                          key={i}
+                                          className="bar"
+                                          style={{ height: `${Math.max(4, h * 18)}px` }}
+                                        />
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="preview-header-empty">—</div>
+                                  )}
+                                  <div className="preview-header-meta">{formatCompactCount(numericCount)} values</div>
+                                </>
+                              );
+                            })()}
+                          </>
+                        ) : isTextType(col.type) ? (
+                          <>
+                            {(() => {
+                              const cats = buildCategorySummary(rows, col.name);
+                              const topN = cats.slice(0, 2);
+                              const distinctCount = countDistinctValues(rows, col.name);
+                              return (
+                                <>
+                                  <div className="preview-chip-row">
+                                    {topN.map((c) => (
+                                      <span
+                                        key={c.label}
+                                        className="preview-chip"
+                                        title={`${c.label}: ${c.count}`}
+                                      >
+                                        {c.label.slice(0, 14)}
+                                      </span>
+                                    ))}
+                                    {distinctCount > topN.length && (
+                                      <span className="preview-chip-more">+{distinctCount - topN.length}</span>
+                                    )}
+                                  </div>
+                                  <div className="preview-header-meta">
+                                    {formatCompactCount(distinctCount)} categories
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </>
+                        ) : isDateType(col.type) ? (
+                          <div className="preview-header-meta">{formatCompactCount(rows.filter((row) => row[col.name]).length)} dates</div>
+                        ) : (
+                          <div className="preview-header-meta">{formatCompactCount(rows.filter((row) => row[col.name] !== null && row[col.name] !== undefined).length)} values</div>
+                        )}
+                      </div>
+                    )}
                   </th>
                 );
               })}
             </tr>
 
-            {!presentation && (
-              <tr className="col-summary-row">
-                {result.columns.map((col) => {
-                  if (isNumericType(col.type)) {
-                    const bars = buildSparkline(rows, col);
-                    return (
-                      <td key={col.name}>
-                        {bars.length > 0 ? (
-                          <div className="mini-sparkline">
-                            {bars.map((h, i) => (
-                              <div
-                                key={i}
-                                className="bar"
-                                style={{ height: `${Math.max(10, h * 20)}px` }}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-[9px] text-gray-300">—</div>
-                        )}
-                      </td>
-                    );
-                  }
-                  if (isTextType(col.type)) {
-                    const cats = buildCategorySummary(rows, col.name);
-                    const topN = cats.slice(0, 4);
-                    return (
-                      <td key={col.name}>
-                        <div className="flex gap-0.5 items-center flex-wrap">
-                          {topN.map((c) => (
-                            <span
-                              key={c.label}
-                              className="category-chip"
-                              style={{ opacity: 0.5 + c.pct * 0.5 }}
-                              title={`${c.label}: ${c.count}`}
-                            >
-                              {c.label.slice(0, 10)}
-                            </span>
-                          ))}
-                          {cats.length > 4 && (
-                            <span className="text-[9px] text-gray-400">+{cats.length - 4}</span>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  }
-                  return <td key={col.name}><div className="text-[9px] text-gray-300">—</div></td>;
-                })}
-              </tr>
-            )}
           </thead>
 
           <tbody>
