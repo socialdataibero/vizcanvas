@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { DAGNode } from "@/engine/types";
 import { JavaScriptConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -14,30 +14,20 @@ export default function JSNodeBody({ node, expandTablePreview = false }: Props) 
   const config = node.config as JavaScriptConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const [code, setCode] = useState(config.code || "// input is available\nreturn input;");
-  const [output, setOutput] = useState<string>("");
   const maxPreviewChars = expandTablePreview ? 2000 : 500;
-
-  useEffect(() => {
-    setCode(config.code || "// input is available\nreturn input;");
-  }, [config.code]);
-
-  useEffect(() => {
+  const output = useMemo(() => {
     if (node.result) {
       const serialized = JSON.stringify(node.result.rows, null, 2);
-      setOutput(
-        serialized.length > maxPreviewChars
-          ? `${serialized.slice(0, maxPreviewChars)}\n...`
-          : serialized
-      );
-      return;
+      return serialized.length > maxPreviewChars
+        ? `${serialized.slice(0, maxPreviewChars)}\n...`
+        : serialized;
     }
 
     if (node.error) {
-      setOutput(node.error);
-      return;
+      return node.error;
     }
 
-    setOutput("");
+    return "";
   }, [maxPreviewChars, node.error, node.result]);
 
   const handleRun = () => {

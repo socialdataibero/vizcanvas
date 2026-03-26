@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { DAGNode } from "@/engine/types";
 import { SQLConfig } from "@/types/nodes";
 import { useDagStore } from "@/stores/dagStore";
@@ -16,10 +16,6 @@ export default function SQLNodeBody({ node, expandTablePreview = false }: Props)
   const config = node.config as SQLConfig;
   const updateNodeConfig = useDagStore((s) => s.updateNodeConfig);
   const [query, setQuery] = useState(config.query || "SELECT * FROM input");
-
-  useEffect(() => {
-    setQuery(config.query || "SELECT * FROM input");
-  }, [config.query]);
 
   const handleRun = () => {
     updateNodeConfig(node.id, { query } as Partial<SQLConfig>);

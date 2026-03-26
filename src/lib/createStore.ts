@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useCallback, useRef } from "react";
+import { useSyncExternalStore, useCallback, useEffect, useRef } from "react";
 
 type SetState<T> = {
   (partial: Partial<T> | ((state: T) => Partial<T>)): void;
@@ -48,8 +48,9 @@ export function useStore<T extends object, S>(
   const resultRef = useRef<S | undefined>(undefined);
   const stateRef = useRef<T | undefined>(undefined);
 
-  // Always update the selector ref to the latest one
-  selectorRef.current = selector;
+  useEffect(() => {
+    selectorRef.current = selector;
+  }, [selector]);
 
   const getSnapshot = useCallback(() => {
     const currentState = store.getState();

@@ -155,7 +155,7 @@ export default function DataNodeComponent({
     if (newNodeId && type !== "from") {
       setTimeout(() => addEdge(node.id, newNodeId), 50);
     }
-  }, [onAddDownstreamNode, node.id, node.type, addEdge, position, size.height, size.width]);
+  }, [onAddDownstreamNode, node.id, node.type, addEdge, position, size.height, size.minHeight, size.width]);
 
   return (
     <div
