@@ -236,16 +236,6 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     fields: { x: "required", y: "required", color: "optional" },
   },
   {
-    id: "arc-map",
-    label: "Arc Map",
-    iconName: "ChartArcMap",
-    section: "FLOW",
-    description: "Curved connections between locations.",
-    supported: true,
-    chartType: "arc",
-    fields: { x: "required", y: "required", x2: "required", y2: "required", length: "optional", color: "optional" },
-  },
-  {
     id: "world-choropleth",
     label: "Choropleth",
     iconName: "ChartChoropleth",
@@ -329,7 +319,6 @@ const FALLBACK_CATALOG_BY_TYPE: Partial<Record<ChartType, string>> = {
   choropleth: "world-choropleth",
   geoPoint: "dot-map",
   spike: "spike-map",
-  arc: "arc-map",
   sankey: "sankey-diagram",
 };
 

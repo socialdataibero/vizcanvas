@@ -40,7 +40,6 @@ describe("chartCatalog", () => {
     expect(CHART_CATALOG.find((entry) => entry.id === "world-choropleth")?.supported).toBe(true);
     expect(CHART_CATALOG.find((entry) => entry.id === "dot-map")?.supported).toBe(true);
     expect(CHART_CATALOG.find((entry) => entry.id === "spike-map")?.supported).toBe(true);
-    expect(CHART_CATALOG.find((entry) => entry.id === "arc-map")?.supported).toBe(true);
     expect(CHART_CATALOG.find((entry) => entry.id === "sankey-diagram")?.supported).toBe(true);
   });
 

@@ -314,11 +314,17 @@ function ChartTypeButton({ entry, isSelected, onSelect }: ChartTypeButtonProps) 
 }
 
 function alignSvgTopLeft(markup: string) {
-  if (!markup.includes("<svg")) return markup;
-  if (markup.includes("preserveAspectRatio=")) {
-    return markup.replace(/preserveAspectRatio="[^"]*"/, 'preserveAspectRatio="xMinYMin meet"');
-  }
-  return markup.replace("<svg", '<svg preserveAspectRatio="xMinYMin meet"');
+  if (!markup.includes("<svg") || typeof document === "undefined") return markup;
+
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  const targetSvg = Array.from(container.querySelectorAll("svg")).find(
+    (svg) => !Array.from(svg.classList).some((className) => className.endsWith("-ramp"))
+  );
+
+  if (!targetSvg) return markup;
+  targetSvg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  return container.innerHTML;
 }
 
 function injectSvgStyle(markup: string, style: string) {
@@ -327,6 +333,10 @@ function injectSvgStyle(markup: string, style: string) {
     return markup.replace(/style="([^"]*)"/, (_match, existing) => `style="${existing}; ${style}"`);
   }
   return markup.replace("<svg", `<svg style="${style}"`);
+}
+
+function normalizeSvgImageHref(markup: string) {
+  return markup.replace(/\sxlink:href=/g, " href=");
 }
 
 function compactSwatchLegendMarkup(markup: string) {
@@ -1047,11 +1057,11 @@ function buildCustomStarterCode(
     type: "mercator",
     domain: {
       type: "FeatureCollection",
-      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}")
+      features: geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}")
     }
   },
   marks: [
-    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}"), {
+    Plot.geo(geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${numericColumn}"), {
       fill: d => d.properties.value,
       stroke: "white",
       strokeWidth: 0.8,
@@ -1459,17 +1469,17 @@ function buildCustomStarterCode(
     type: "mercator",
     domain: {
       type: "FeatureCollection",
-      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}")
+      features: geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}")
     }
   },
   marks: [
-    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"), {
+    Plot.geo(geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"), {
       fill: "#f8fafc",
       stroke: "#e2e8f0",
       strokeWidth: 0.8
     }),
     Plot.dot(
-      helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"),
+      geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.sizeColumn ?? numericColumn}"),
       Plot.geoCentroid({
         r: d => d.properties.value ?? 5,
         fill: "#14b8a6",
@@ -1490,17 +1500,17 @@ function buildCustomStarterCode(
     type: "mercator",
     domain: {
       type: "FeatureCollection",
-      features: helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}")
+      features: geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}")
     }
   },
   marks: [
-    Plot.geo(helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"), {
+    Plot.geo(geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"), {
       fill: "#e0e0e0",
       stroke: "white",
       strokeWidth: 1
     }),
     Plot.spike(
-      helpers.geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"),
+      geometryFeatures(data, "${geometryColumn}", "${featureLabelColumn}", "${config.lengthColumn ?? numericColumn}"),
       Plot.geoCentroid({
         length: d => d.properties.value ?? 0,
         stroke: "red",
@@ -1561,16 +1571,12 @@ function buildCustomStarterCode(
 
   if (selectedVariant === "sankey-diagram") {
     return `Plot.plot({
-  width,
-  height,
-  color: { legend: true },
-  marks: [
-    Plot.barX(data, Plot.groupY({ x: "sum" }, {
-      y: "${categoryColumn}",
-      x: "${config.sizeColumn ?? numericColumn}",
-      fill: "${config.colorColumn ?? categoryColumn}"
-    }))
-  ]
+  ...(await sankey(Plot, data, {
+    source: "${config.xColumn ?? categoryColumn}",
+    target: "${config.yColumn ?? numericColumn}",
+    value: "${config.sizeColumn ?? numericColumn}"${config.colorColumn ? `,
+    group: "${config.colorColumn}"` : ""}
+  }, width, height))
 })`;
   }
 
@@ -1864,6 +1870,9 @@ async function buildSankeyData(
 
     const sourceName = String(source);
     const targetName = String(target);
+    if (sourceName === targetName) {
+      return;
+    }
     const group =
       groupColumn && row[groupColumn] !== undefined && row[groupColumn] !== null
         ? String(row[groupColumn])
@@ -1900,11 +1909,20 @@ async function buildSankeyData(
     return { nodes: [], linkBands: [] };
   }
 
+  const sourceNodeCount = new Set(links.map((link) => link.source)).size;
+  const targetNodeCount = new Set(links.map((link) => link.target)).size;
+  const maxColumnNodeCount = Math.max(sourceNodeCount, targetNodeCount, 1);
+  const availableHeight = Math.max(height - 24, 180);
+  const preferredNodePadding = maxColumnNodeCount > 1
+    ? Math.floor((availableHeight - maxColumnNodeCount * 8) / (maxColumnNodeCount - 1))
+    : 14;
+  const nodePadding = Math.max(2, Math.min(14, preferredNodePadding));
+
   const layout = sankey<SankeyNodeDatum, SankeyLinkDatum>()
     .nodeId((node: SankeyNodeDatum) => node.name)
     .nodeWidth(18)
-    .nodePadding(14)
-    .extent([[0, 0], [Math.max(width - 40, 240), Math.max(height - 24, 180)]]);
+    .nodePadding(nodePadding)
+    .extent([[0, 0], [Math.max(width - 40, 240), availableHeight]]);
 
   const graph = layout({
     nodes: nodes.map((node) => ({ ...node })) as SankeyNodeDatum[],
@@ -1949,6 +1967,97 @@ async function buildSankeyData(
   });
 
   return { nodes: sankeyNodes, linkBands };
+}
+
+async function buildSankeyPlotConfig(
+  Plot: typeof PlotModule,
+  data: Record<string, unknown>[],
+  options: {
+    source: string;
+    target: string;
+    value: string;
+    group?: string;
+  },
+  width: number,
+  height: number
+) {
+  if (options.source === options.target) {
+    throw new Error("Choose different source and target columns for a Sankey diagram.");
+  }
+
+  const { nodes, linkBands } = await buildSankeyData(
+    data,
+    options.source,
+    options.target,
+    options.value,
+    width,
+    height,
+    options.group
+  );
+
+  if (nodes.length === 0 || linkBands.length === 0) {
+    throw new Error("No valid Sankey links to render for the selected columns.");
+  }
+
+  const marks: Array<
+    ReturnType<typeof Plot.areaY> |
+    ReturnType<typeof Plot.rect> |
+    ReturnType<typeof Plot.text>
+  > = [];
+
+  linkBands.forEach((band) => {
+    marks.push(
+      Plot.areaY(band.points, {
+        x: "x",
+        y1: "y0",
+        y2: "y1",
+        curve: "bump-x",
+        fill: options.group ? band.group : "#0f172a",
+        fillOpacity: 0.16,
+      } as Record<string, unknown>)
+    );
+  });
+
+  marks.push(
+    Plot.rect(nodes, {
+      x1: "x0",
+      x2: "x1",
+      y1: "y0",
+      y2: "y1",
+      fill: options.group ? "group" : "name",
+    } as Record<string, unknown>)
+  );
+
+  marks.push(
+    Plot.text(nodes, {
+      x: "x1",
+      y: (node: { y0: number; y1: number }) => (node.y0 + node.y1) / 2,
+      text: "name",
+      dx: 5,
+      textAnchor: "start",
+      lineAnchor: "middle",
+      fontSize: 10,
+    } as Record<string, unknown>)
+  );
+
+  return {
+    width,
+    height,
+    ...(options.group
+      ? {
+          color: {
+            ...getCompactSwatchLegendOptions(width),
+          },
+        }
+      : {}),
+    x: { axis: null },
+    y: { axis: null },
+    marginTop: 20,
+    marginRight: 48,
+    marginBottom: 8,
+    marginLeft: 8,
+    marks,
+  };
 }
 
 export default function ChartNodeBody({ node, presentationMode = false }: Props) {
@@ -1998,6 +2107,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   const [plotSize, setPlotSize] = useState({ width: 400, height: 220 });
   const [chartMarkup, setChartMarkup] = useState<string>("");
   const [chartError, setChartError] = useState<string>("");
+  const syncCustomEditorHeight = () => {
+    const editor = customEditorRef.current;
+    if (!editor) return;
+    editor.style.height = "260px";
+    editor.style.height = `${Math.max(260, editor.scrollHeight)}px`;
+  };
 
   useEffect(() => {
     const previewEl = previewRef.current;
@@ -2021,6 +2136,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
   useEffect(() => {
     setCustomDraft(customCode ?? starterCustomCode);
   }, [customCode, starterCustomCode]);
+
+  useEffect(() => {
+    syncCustomEditorHeight();
+  }, [activeTab, customDraft]);
 
   useEffect(() => {
     if (copyFeedback !== "copied") return undefined;
@@ -2124,7 +2243,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             "width",
             "height",
             "helpers",
+            "geometryFeatures",
             "waffleY",
+            "sankey",
             `"use strict";\n${customCode}`
           );
           const customResult = await executeCustomPlot(
@@ -2133,6 +2254,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             plotSize.width,
             plotSize.height,
             helpers,
+            (
+              rows: Record<string, unknown>[],
+              geometryField: string,
+              labelField: string,
+              valueField: string
+            ) => buildGeometryFeatures(rows, geometryField, labelField, valueField),
             (
               plot: typeof PlotModule,
               rows: Record<string, unknown>[],
@@ -2143,6 +2270,19 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 reducer?: "sum" | "mean";
               }
             ) => buildWaffleMark(plot, rows, options)
+            ,
+            (
+              plot: typeof PlotModule,
+              rows: Record<string, unknown>[],
+              options: {
+                source: string;
+                target: string;
+                value: string;
+                group?: string;
+              },
+              customWidth: number,
+              customHeight: number
+            ) => buildSankeyPlotConfig(plot, rows, options, customWidth, customHeight)
           );
           const customChart = plottedChart ?? customResult;
 
@@ -2654,6 +2794,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (xColumn && yColumn) {
               showColorLegend = true;
               const fillColumn = colorColumn || "count";
+              const heatmapValues = colorColumn
+                ? data.map((row) => (row as Record<string, unknown>)[colorColumn])
+                : data.map(() => 1);
               const uniqueXCount = new Set(
                 data.map((row) => (row as Record<string, unknown>)[xColumn])
               ).size;
@@ -2665,9 +2808,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 ...getQuantitativeLegendOptions(
                   plotSize.width,
                   fillColumn,
-                  colorColumn
-                    ? data.map((row) => (row as Record<string, unknown>)[colorColumn])
-                    : data.map(() => 1)
+                  heatmapValues
                 ),
               };
               marks.push(
@@ -2705,18 +2846,18 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             if (xColumn && yColumn) {
               showColorLegend = true;
               showGrid = false;
+              const choroplethValues = data.map((row) => (row as Record<string, unknown>)[yColumn]);
               plotOptions.marginTop = 8;
               plotOptions.marginRight = 8;
               plotOptions.marginBottom = 8;
               plotOptions.marginLeft = 8;
               plotOptions.color = {
-                type: "quantile",
-                n: 9,
+                zero: true,
                 scheme: "blues",
                 ...getQuantitativeLegendOptions(
                   plotSize.width,
                   yColumn,
-                  data.map((row) => (row as Record<string, unknown>)[yColumn])
+                  choroplethValues
                 ),
               };
 
@@ -3164,6 +3305,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "sankey-diagram":
             if (xColumn && yColumn && sizeColumn) {
+              if (xColumn === yColumn) {
+                throw new Error("Choose different source and target columns for a Sankey diagram.");
+              }
               const { nodes: sankeyNodes, linkBands } = await buildSankeyData(
                 data as Record<string, unknown>[],
                 xColumn,
@@ -3425,6 +3569,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         } as PlotModule.PlotOptions);
         if (!cancelled) {
           let html = isGeospatialChart ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
+          html = normalizeSvgImageHref(html);
           if (showColorLegend && !variantColorOptions) {
             html = compactSwatchLegendMarkup(html);
           }
@@ -3838,9 +3983,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                     <textarea
                       ref={customEditorRef}
                       value={customDraft}
-                      onChange={(event) => setCustomDraft(event.target.value)}
+                      onChange={(event) => {
+                        setCustomDraft(event.target.value);
+                        syncCustomEditorHeight();
+                      }}
                       spellCheck={false}
-                      className="subtle-scrollbar h-[420px] min-h-[260px] w-full resize-none overflow-y-auto overflow-x-hidden bg-white px-3 py-3 font-mono text-[11px] leading-5 text-slate-700 outline-none"
+                      className="min-h-[260px] w-full resize-none overflow-hidden bg-white px-3 py-3 font-mono text-[11px] leading-5 text-slate-700 outline-none"
                     />
                   </div>
                 </div>

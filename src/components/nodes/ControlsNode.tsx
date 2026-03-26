@@ -64,12 +64,26 @@ export default function ControlsNodeBody({ node, expandTablePreview = false }: P
     () => controls.filter((control) => isControlComplete(control)).length,
     [controls]
   );
+  const completedControlsSignature = useMemo(
+    () =>
+      JSON.stringify(
+        controls
+          .filter((control) => isControlComplete(control))
+          .map((control) => ({
+            id: control.id,
+            type: control.type,
+            column: control.column,
+            value: control.value,
+          }))
+      ),
+    [controls]
+  );
   const hasPendingFilters = validFilterCount > 0 && node.status !== "success";
 
   useEffect(() => {
     if (validFilterCount === 0) return;
     void executeDirty(node.id);
-  }, [executeDirty, node.id, validFilterCount]);
+  }, [completedControlsSignature, executeDirty, node.id, validFilterCount]);
 
   const updateControlsConfig = (nextControls: ControlDefinition[]) => {
     updateNodeConfig(node.id, { controls: nextControls } as Partial<ControlsConfig>, { autoExecute: false });

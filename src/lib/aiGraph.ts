@@ -117,7 +117,6 @@ const SUPPORTED_CHART_TYPES: ChartType[] = [
   "choropleth",
   "geoPoint",
   "spike",
-  "arc",
   "sankey",
 ];
 const SUPPORTED_CONTROL_TYPES: ControlDefinition["type"][] = ["dropdown", "slider", "date", "text"];
@@ -167,8 +166,6 @@ const CHART_TYPE_ALIASES: Record<string, ChartType> = {
   spike: "spike",
   spikemap: "spike",
   choropleth: "choropleth",
-  arc: "arc",
-  arcmap: "arc",
   sankey: "sankey",
   sankeydiagram: "sankey",
 };
@@ -571,8 +568,6 @@ function inferChartCatalogId(chartType: ChartType | undefined, rawConfig: Record
       return "dot-map";
     case "spike":
       return "spike-map";
-    case "arc":
-      return "arc-map";
     case "sankey":
       return "sankey-diagram";
     default:
