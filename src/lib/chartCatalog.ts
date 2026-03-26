@@ -136,16 +136,6 @@ export const CHART_CATALOG: ChartCatalogEntry[] = [
     fields: { x: "required", y: "required", color: "optional" },
   },
   {
-    id: "color-scatterplot",
-    label: "Color scatter",
-    iconName: "ChartColorScatter",
-    section: "RELATIONSHIP",
-    description: "Scatterplot with group encoded as color.",
-    supported: true,
-    chartType: "scatter",
-    fields: { x: "required", y: "required", color: "required" },
-  },
-  {
     id: "bubble-chart",
     label: "Bubble",
     iconName: "ChartBubble",

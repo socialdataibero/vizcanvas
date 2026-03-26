@@ -74,10 +74,16 @@ function getCompactSwatchLegendOptions(_plotWidth: number) {
   };
 }
 
-function getQuantitativeLegendOptions(_plotWidth: number, label: string) {
+function getQuantitativeLegendOptions(_plotWidth: number, label: string, values: unknown[] = []) {
+  const tickSample = formatAxisTickValue(0, label, values);
   return {
     legend: true,
     label,
+    ...(tickSample === undefined
+      ? {}
+      : {
+          tickFormat: (value: number) => formatAxisTickValue(value, label, values) ?? value,
+        }),
   };
 }
 
@@ -1332,16 +1338,24 @@ function buildCustomStarterCode(
   }
 
   if (selectedVariant === "heatmap") {
+    const fillColumn = config.colorColumn ?? numericColumn;
     return `Plot.plot({
   width,
   height,
-  color: { legend: true, scheme: "blues" },
+  padding: 0,
+  y: { label: null },
+  color: { legend: true, zero: true, scheme: "blues", label: "${fillColumn}" },
   marks: [
-    Plot.cell(data, {
-      x: "${categoryColumn}",
-      y: "${numericColumn}",
-      fill: "${config.colorColumn ?? numericColumn}"
-    })
+    Plot.cell(data, Plot.group(
+      { fill: "median" },
+      {
+        x: "${categoryColumn}",
+        y: "${numericColumn}",
+        fill: "${fillColumn}",
+        inset: 0.5,
+        sort: { y: "fill" }
+      }
+    ))
   ]
 })`;
   }
@@ -2554,13 +2568,52 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "heatmap":
             if (xColumn && yColumn) {
+              showColorLegend = true;
+              const fillColumn = colorColumn || "count";
+              const uniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueXCount);
+              plotOptions.x = { tickRotate };
+              plotOptions.color = {
+                zero: true,
+                scheme: "blues",
+                ...getQuantitativeLegendOptions(
+                  plotSize.width,
+                  fillColumn,
+                  colorColumn
+                    ? data.map((row) => (row as Record<string, unknown>)[colorColumn])
+                    : data.map(() => 1)
+                ),
+              };
               marks.push(
-                Plot.cell(data, {
-                  x: xColumn,
-                  y: yColumn,
-                  fill: colorColumn || "count",
-                  ...(colorColumn ? {} : Plot.group({ fill: "count" })),
-                } as Record<string, unknown>)
+                colorColumn
+                  ? Plot.cell(
+                      data,
+                      Plot.group(
+                        { fill: "median" },
+                        {
+                          x: xColumn,
+                          y: yColumn,
+                          fill: colorColumn,
+                          inset: 0.5,
+                          sort: { y: "fill" },
+                        } as Record<string, unknown>
+                      )
+                    )
+                  : Plot.cell(
+                      data,
+                      Plot.group(
+                        { fill: "count" },
+                        {
+                          x: xColumn,
+                          y: yColumn,
+                          fill: "count",
+                          inset: 0.5,
+                          sort: { y: "fill" },
+                        } as Record<string, unknown>
+                      )
+                    )
               );
             }
             break;
@@ -2576,7 +2629,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 type: "quantile",
                 n: 9,
                 scheme: "blues",
-                ...getQuantitativeLegendOptions(plotSize.width, yColumn),
+                ...getQuantitativeLegendOptions(
+                  plotSize.width,
+                  yColumn,
+                  data.map((row) => (row as Record<string, unknown>)[yColumn])
+                ),
               };
 
               if (!geometryColumn) {
@@ -2928,11 +2985,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                     type: "diverging-log",
                     pivot: 1,
                     scheme: "PiYG",
-                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
+                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn, cartogramValues),
                   }
                 : {
                     scheme: "blues",
-                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn),
+                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn, cartogramValues),
                   };
 
               marks.push(
@@ -3126,7 +3183,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           color?: Record<string, unknown>;
         };
         const categoricalYLabels =
-          yColumn && (variantId === "horizontal-bar" || variantId === "barX" || variantId === "barcode-strip-plot")
+          yColumn && (
+            variantId === "horizontal-bar" ||
+            variantId === "barX" ||
+            variantId === "barcode-strip-plot" ||
+            variantId === "heatmap"
+          )
             ? Array.from(
                 new Set(data.map((row) => String((row as Record<string, unknown>)[yColumn] ?? "")))
               )
@@ -3138,6 +3200,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             : variantId === "horizontal-bar" || variantId === "barX"
             ? computeCategoricalYMargin(categoricalYLabels)
             : variantId === "barcode-strip-plot" && Boolean(yColumn)
+            ? computeCategoricalYMargin(categoricalYLabels)
+            : variantId === "heatmap" && Boolean(yColumn)
             ? computeCategoricalYMargin(categoricalYLabels)
             : variantId === "stacked-bar" && xColumn && yColumn
             ? getCompactAxisMargin(computeMaxGroupSum(data as Record<string, unknown>[], xColumn, yColumn))
@@ -3210,7 +3274,10 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             }
           : resolvedXAxisOptionsBase;
         const suppressYLabel =
-          variantId === "horizontal-bar" || variantId === "barX" || variantId === "barcode-strip-plot";
+          variantId === "horizontal-bar" ||
+          variantId === "barX" ||
+          variantId === "barcode-strip-plot" ||
+          variantId === "heatmap";
         const resolvedYAxisOptionsBase = mergeAxisDisplayOptions(
           restPlotOptions.y,
           getAxisLabel("y", selectedCatalogEntry, chartType, variantId === "faceted-dodge" ? xColumn : yColumn, xColumn),
