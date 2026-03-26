@@ -2,8 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type * as PlotModule from "@observablehq/plot";
-import type { GeoGeometryObjects } from "d3";
-import { FiChevronsLeft, FiChevronsRight, FiCopy, FiPlay, FiRotateCcw } from "react-icons/fi";
+import { FiChevronsLeft, FiChevronsRight, FiPlay } from "react-icons/fi";
 import { LuChartColumnBig } from "react-icons/lu";
 import { DAGNode } from "@/engine/types";
 import { ChartConfig, ChartType, ColumnInfo } from "@/types/nodes";
@@ -68,13 +67,14 @@ function getBarXMarkOptions(yColumn: string, xColumn: string, fill: string) {
   };
 }
 
-function getCompactSwatchLegendOptions(_plotWidth: number) {
+function getCompactSwatchLegendOptions(...args: unknown[]) {
+  void args;
   return {
     legend: true,
   };
 }
 
-function getQuantitativeLegendOptions(_plotWidth: number, label: string, values: unknown[] = []) {
+function getQuantitativeLegendOptions(label: string, values: unknown[] = []) {
   const tickSample = formatAxisTickValue(0, label, values);
   return {
     legend: true,
@@ -97,18 +97,6 @@ function isAverageLikeColumnName(name?: string | null) {
 
 function getReducerForColumnName(name?: string | null) {
   return isAverageLikeColumnName(name) ? "mean" : "sum";
-}
-
-function getNumericAxisMargin(values: unknown[], fallback = 52) {
-  const numericValues = values
-    .map((value) => (typeof value === "number" ? value : Number(value)))
-    .filter((value) => Number.isFinite(value));
-
-  if (numericValues.length === 0) return fallback;
-
-  const maxAbs = Math.max(...numericValues.map((value) => Math.abs(value)));
-  const formatted = Math.round(maxAbs).toLocaleString();
-  return Math.max(fallback, Math.min(96, formatted.length * 8 + 20));
 }
 
 function getAxisLabel(
@@ -851,27 +839,6 @@ async function buildTreemapLeaves(
   }));
 }
 
-const GEO_NAME_ALIASES: Record<string, string> = {
-  us: "unitedstatesofamerica",
-  usa: "unitedstatesofamerica",
-  unitedstates: "unitedstatesofamerica",
-  uk: "unitedkingdom",
-  uae: "unitedarabemirates",
-  czechia: "czechrepublic",
-};
-
-function normalizeGeoLookupKey(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const normalized = String(value)
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "");
-
-  return GEO_NAME_ALIASES[normalized] ?? normalized;
-}
-
 async function loadWorldAtlasFeatures() {
   const [{ feature }, countriesModule, landModule] = await Promise.all([
     import("topojson-client"),
@@ -894,23 +861,6 @@ async function loadWorldAtlasFeatures() {
   return { countries: countries.features, land };
 }
 
-function buildCountryValueLookup(
-  data: Record<string, unknown>[],
-  countryColumn: string,
-  valueColumn: string
-) {
-  const values = new Map<string, number>();
-
-  data.forEach((row) => {
-    const key = normalizeGeoLookupKey(row[countryColumn]);
-    const value = toFiniteNumber(row[valueColumn]);
-    if (!key || value === null) return;
-    values.set(key, (values.get(key) ?? 0) + value);
-  });
-
-  return values;
-}
-
 type GeometryFeatureDatum = {
   type: "Feature";
   properties: {
@@ -921,14 +871,6 @@ type GeometryFeatureDatum = {
   geometry: {
     type: string;
   } & Record<string, unknown>;
-};
-
-type CartogramCellDatum = {
-  gridX: number;
-  gridY: number;
-  label: string;
-  value: number;
-  textLabel: string;
 };
 
 function buildGeometryFeatures(
@@ -955,78 +897,11 @@ function buildGeometryFeatures(
   });
 }
 
-async function buildCartogramCells(
-  data: Record<string, unknown>[],
-  geometryColumn: string,
-  featureLabelColumn: string,
-  valueColumn: string,
-  textLabelColumn?: string
-): Promise<CartogramCellDatum[]> {
-  const d3 = await import("d3");
-  const features = data.flatMap((row) => {
-    const geometry = parseGeometryValue(row[geometryColumn]);
-    const value = toFiniteNumber(row[valueColumn]);
-    const featureLabel = row[featureLabelColumn];
-    if (!geometry || value === null || featureLabel === undefined || featureLabel === null) {
-      return [];
-    }
-
-    const [longitude, latitude] = d3.geoCentroid(geometry as GeoGeometryObjects);
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
-      return [];
-    }
-
-    return [{
-      longitude,
-      latitude,
-      label: String(featureLabel),
-      value,
-      textLabel:
-        textLabelColumn && row[textLabelColumn] !== undefined && row[textLabelColumn] !== null
-          ? String(row[textLabelColumn])
-          : String(featureLabel),
-    }];
-  });
-
-  if (features.length === 0) {
-    return [];
-  }
-
-  const longitudes = features.map((feature) => feature.longitude);
-  const latitudes = features.map((feature) => feature.latitude);
-  const longitudeSpan = Math.max(...longitudes) - Math.min(...longitudes);
-  const latitudeSpan = Math.max(...latitudes) - Math.min(...latitudes);
-  const aspectRatio = longitudeSpan > 0 && latitudeSpan > 0
-    ? Math.min(2.4, Math.max(0.75, longitudeSpan / latitudeSpan))
-    : 1;
-  const rowCount = Math.max(1, Math.round(Math.sqrt(features.length / aspectRatio)));
-  const rows: typeof features[] = Array.from({ length: rowCount }, () => []);
-
-  const northToSouth = [...features].sort((left, right) => right.latitude - left.latitude);
-  northToSouth.forEach((feature, index) => {
-    const rowIndex = Math.min(rowCount - 1, Math.floor(index * rowCount / northToSouth.length));
-    rows[rowIndex].push(feature);
-  });
-
-  return rows.flatMap((row, rowIndex) =>
-    row
-      .sort((left, right) => left.longitude - right.longitude)
-      .map((feature, columnIndex) => ({
-        gridX: columnIndex,
-        gridY: rowIndex,
-        label: feature.label,
-        value: feature.value,
-        textLabel: feature.textLabel,
-      }))
-  );
-}
-
 function buildCustomStarterCode(
   config: ChartConfig,
   entry: ChartCatalogEntry | null,
   columns: ColumnInfo[],
-  geometryColumn: string | null,
-  data: Record<string, unknown>[] = []
+  geometryColumn: string | null
 ) {
   const categoryColumn = config.xColumn ?? columns[0]?.name ?? "category";
   const numericColumn =
@@ -2094,13 +1969,13 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     () => getChartCatalogEntry(chartCatalogId, chartType),
     [chartCatalogId, chartType]
   );
-  const getCompatibleConfigPatch = (targetConfig: ChartConfig) => {
+  const getCompatibleConfigPatch = React.useCallback((targetConfig: ChartConfig) => {
     const nextEntry = getChartCatalogEntry(targetConfig.chartCatalogId, targetConfig.chartType);
     return getIncompatibleChartConfigPatch(targetConfig, nextEntry, columns);
-  };
+  }, [columns]);
   const starterCustomCode = useMemo(
-    () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn, data as Record<string, unknown>[]),
-    [columns, config, data, geometryColumn, selectedCatalogEntry]
+    () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn),
+    [columns, config, geometryColumn, selectedCatalogEntry]
   );
   const [customDraft, setCustomDraft] = useState(customCode ?? starterCustomCode);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied">("idle");
@@ -2165,7 +2040,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     if (Object.keys(configPatch).length === 0) return;
 
     updateNodeConfig(node.id, configPatch);
-  }, [columns, config, customEnabled, node.id, updateNodeConfig]);
+  }, [columns, config, customEnabled, getCompatibleConfigPatch, node.id, updateNodeConfig]);
 
   useEffect(() => {
     if (
@@ -2306,6 +2181,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         }
         const marks: PlotModule.Markish[] = [];
         const variantId = selectedCatalogEntry?.id ?? chartType;
+        const spikeMapVariant = selectedCatalogEntry?.id === "spike-map";
+        const geospatialVariant =
+          selectedCatalogEntry?.id === "world-choropleth" ||
+          selectedCatalogEntry?.id === "dot-map" ||
+          spikeMapVariant ||
+          selectedCatalogEntry?.id === "arc-map";
         let showColorLegend = false;
         let showGrid = true;
         const plotOptions: Record<string, unknown> = {};
@@ -2806,7 +2687,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 zero: true,
                 scheme: "blues",
                 ...getQuantitativeLegendOptions(
-                  plotSize.width,
                   fillColumn,
                   heatmapValues
                 ),
@@ -2855,7 +2735,6 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                 zero: true,
                 scheme: "blues",
                 ...getQuantitativeLegendOptions(
-                  plotSize.width,
                   yColumn,
                   choroplethValues
                 ),
@@ -3210,11 +3089,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                     type: "diverging-log",
                     pivot: 1,
                     scheme: "PiYG",
-                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn, cartogramValues),
+                    ...getQuantitativeLegendOptions(colorColumn, cartogramValues),
                   }
                 : {
                     scheme: "blues",
-                    ...getQuantitativeLegendOptions(plotSize.width, colorColumn, cartogramValues),
+                    ...getQuantitativeLegendOptions(colorColumn, cartogramValues),
                   };
 
               marks.push(
@@ -3568,12 +3447,12 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           style: { fontSize: "10px", background: "transparent" },
         } as PlotModule.PlotOptions);
         if (!cancelled) {
-          let html = isGeospatialChart ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
+          let html = geospatialVariant ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
           html = normalizeSvgImageHref(html);
           if (showColorLegend && !variantColorOptions) {
             html = compactSwatchLegendMarkup(html);
           }
-          if (isSpikeMap) {
+          if (spikeMapVariant) {
             html = injectSvgStyle(html, "transform: translateX(-28px);");
           }
           setChartMarkup(html);
@@ -3606,6 +3485,9 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     yColumn,
     y2Column,
     data,
+    columns,
+    geometryColumn,
+    normalizedBeeswarmAnchor,
     plotSize.height,
     plotSize.width,
     selectedCatalogEntry,
@@ -3642,7 +3524,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
 
   const syncCustomFromBuilder = (nextConfig: ChartConfig) => {
     const nextEntry = getChartCatalogEntry(nextConfig.chartCatalogId, nextConfig.chartType);
-    return buildCustomStarterCode(nextConfig, nextEntry, columns, geometryColumn, data as Record<string, unknown>[]);
+    return buildCustomStarterCode(nextConfig, nextEntry, columns, geometryColumn);
   };
 
   const updateChartConfig = (patch: Partial<ChartConfig>, options?: { syncCustom?: boolean }) => {

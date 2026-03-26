@@ -14,10 +14,10 @@ import TitleCard from "@/components/panels/TitleCard";
 import AIPanel from "@/components/panels/AIPanel";
 import PageTabs from "@/components/panels/PageTabs";
 import ShortcutsModal from "@/components/ui/ShortcutsModal";
-import { NodeType, FromConfig, ColumnInfo, GroupConfig, ChartConfig, AggregationConfig, JoinConfig } from "@/types/nodes";
+import { NodeType, FromConfig, ColumnInfo, GroupConfig, ChartConfig, JoinConfig } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
 import { DataTable } from "@/types/data";
-import { DAGEdge, DAGNode } from "@/engine/types";
+import { DAGNode } from "@/engine/types";
 import { AIGraphPlan } from "@/lib/aiGraph";
 import { buildAIPlanLayout } from "@/lib/aiPlanLayout";
 import { buildDeletedPageState, buildDuplicatedPageState } from "@/lib/canvasPages";
@@ -137,14 +137,6 @@ function chooseMapLabelColumn(columns: ColumnInfo[], excludedColumns: string[]):
   );
 }
 
-function guessAggregation(column?: ColumnInfo): AggregationConfig["function"] {
-  if (!column || !isNumericColumn(column)) {
-    return "COUNT";
-  }
-
-  return /price|cost|rate|ratio|score|avg|mean|margin|pct|percent/i.test(column.name) ? "AVG" : "SUM";
-}
-
 function getAvailableColumnsForNode(node: DAGNode | undefined, tables: DataTable[]): ColumnInfo[] {
   if (!node) return [];
   if (node.result?.columns?.length) return node.result.columns;
@@ -213,8 +205,6 @@ export default function CanvasApp() {
   const canvasId = useCanvasStore((s) => s.id);
   const title = useCanvasStore((s) => s.title);
   const pages = useCanvasStore((s) => s.pages);
-  const setTitle = useCanvasStore((s) => s.setTitle);
-  const setCurrentPage = useCanvasStore((s) => s.setCurrentPage);
   const focusMode = useCanvasStore((s) => s.focusMode);
   const toggleFocusMode = useCanvasStore((s) => s.toggleFocusMode);
   const shortcutsModalOpen = useUIStore((s) => s.shortcutsModalOpen);

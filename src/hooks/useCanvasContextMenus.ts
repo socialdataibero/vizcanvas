@@ -127,7 +127,6 @@ export function useCanvasContextMenus({
     handleDeleteNodes,
     handleDuplicateSelection,
     nodeContextMenuNodeId,
-    nodeContextScope.length,
     nodeMenuScope,
     nodePositions,
     onAddNode,

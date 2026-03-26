@@ -1,4 +1,4 @@
-import { loadFile, getTableSchema, getTables } from "./duckdb";
+import { loadFile, getTables } from "./duckdb";
 import { DataTable } from "@/types/data";
 
 export function resolveUploadedTableName(baseName: string, existing: string[]): string {

@@ -22,7 +22,7 @@ interface CanvasState {
 
 const defaultPageId = uuidv4();
 
-const canvasStore = createStore<CanvasState>((set, get) => ({
+const canvasStore = createStore<CanvasState>((set) => ({
   id: uuidv4(),
   title: "Untitled Canvas",
   pages: [{ id: defaultPageId, name: "Page 1", order: 0 }],

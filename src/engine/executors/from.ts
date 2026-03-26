@@ -1,10 +1,9 @@
 import { FromConfig } from "@/types/nodes";
-import { DAGNode, ExecutionContext, NodeExecutor } from "../types";
+import { DAGNode, NodeExecutor } from "../types";
 import { escapeSqlString } from "../sqlUtils";
 
 export const executeFrom: NodeExecutor = async (
-  node: DAGNode,
-  _context: ExecutionContext
+  node: DAGNode
 ): Promise<string> => {
   const config = node.config as FromConfig;
   if (!config.tableName) {

@@ -1,4 +1,4 @@
-import { type MutableRefObject, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { type MutableRefObject, type RefObject } from "react";
 import { DAGEdge, DAGNode } from "@/engine/types";
 import { CanvasFrame } from "@/types/canvas";
 import { useCanvasFrameInteractions } from "@/hooks/useCanvasFrameInteractions";

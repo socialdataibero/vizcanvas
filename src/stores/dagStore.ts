@@ -122,7 +122,8 @@ const dagStore = createStore<DAGState>((set, get) => ({
 
   removeNode: (nodeId) => {
     set((state) => {
-      const { [nodeId]: _, ...rest } = state.nodes;
+      const rest = { ...state.nodes };
+      delete rest[nodeId];
       return {
         nodes: rest,
         edges: state.edges.filter(
@@ -331,7 +332,6 @@ const dagStore = createStore<DAGState>((set, get) => ({
           throw new Error("No JavaScript code provided.");
         }
 
-        // eslint-disable-next-line no-new-func
         const fn = new Function("input", code);
         const rawOutput = fn(upstreamResult.rows);
         const rows = normalizeJavaScriptRows(rawOutput);

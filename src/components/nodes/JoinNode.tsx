@@ -22,9 +22,8 @@ export default function JoinNodeBody({ node, expandTablePreview = false }: Props
   const upstreamIds = useDagStore((s) => s.getUpstreamNodeIds(node.id));
   const leftNode = useDagStore((s) => upstreamIds[0] ? s.nodes[upstreamIds[0]] : undefined);
   const rightNode = useDagStore((s) => upstreamIds[1] ? s.nodes[upstreamIds[1]] : undefined);
-
-  const leftColumns = leftNode?.result?.columns || [];
-  const rightColumns = rightNode?.result?.columns || [];
+  const leftColumns = useMemo(() => leftNode?.result?.columns ?? [], [leftNode?.result?.columns]);
+  const rightColumns = useMemo(() => rightNode?.result?.columns ?? [], [rightNode?.result?.columns]);
   const hasJoinColumns = Boolean(config.leftColumn?.trim() && config.rightColumn?.trim());
   const currentVersion = config.configVersion ?? 0;
   const lastRunVersion = config.lastRunVersion ?? 0;
