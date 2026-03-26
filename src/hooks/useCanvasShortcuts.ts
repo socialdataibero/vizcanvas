@@ -24,7 +24,6 @@ interface UseCanvasShortcutsParams {
   undoCanvas: () => void;
   redoCanvas: () => void;
   toggleFocusMode: () => void;
-  toggleShortcutsModal: () => void;
   nodeShortcuts: Partial<Record<string, NodeType>>;
 }
 
@@ -51,7 +50,6 @@ export function useCanvasShortcuts({
   undoCanvas,
   redoCanvas,
   toggleFocusMode,
-  toggleShortcutsModal,
   nodeShortcuts,
 }: UseCanvasShortcutsParams) {
   useEffect(() => {
@@ -77,12 +75,6 @@ export function useCanvasShortcuts({
       if ((e.metaKey || e.ctrlKey) && e.key === ".") {
         e.preventDefault();
         toggleFocusMode();
-        return;
-      }
-
-      if (e.key === "?" && e.shiftKey) {
-        e.preventDefault();
-        toggleShortcutsModal();
         return;
       }
 
@@ -210,7 +202,6 @@ export function useCanvasShortcuts({
     setSpacePressed,
     setZoom,
     toggleFocusMode,
-    toggleShortcutsModal,
     undoCanvas,
     zoom,
   ]);

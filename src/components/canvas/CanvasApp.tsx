@@ -1168,7 +1168,6 @@ export default function CanvasApp() {
         undoCanvas={undoCanvas}
         redoCanvas={redoCanvas}
         toggleFocusMode={toggleFocusMode}
-        toggleShortcutsModal={toggleShortcutsModal}
         persistCanvasStateNow={persistCanvasStateNow}
       />
 

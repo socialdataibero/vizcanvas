@@ -20,7 +20,6 @@ const shortcuts = [
   ]},
   { category: "General", items: [
     { keys: "⌘ + .", desc: "Toggle focus mode" },
-    { keys: "Shift + ?", desc: "Keyboard shortcuts" },
     { keys: "⌘ + Enter", desc: "Run SQL query" },
   ]},
 ];

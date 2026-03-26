@@ -68,7 +68,6 @@ interface Props {
   undoCanvas: () => void;
   redoCanvas: () => void;
   toggleFocusMode: () => void;
-  toggleShortcutsModal: () => void;
   persistCanvasStateNow: () => void;
 }
 
@@ -90,7 +89,6 @@ export default function InfiniteCanvas({
   undoCanvas,
   redoCanvas,
   toggleFocusMode,
-  toggleShortcutsModal,
   persistCanvasStateNow,
 }: Props) {
   const {
@@ -465,7 +463,6 @@ export default function InfiniteCanvas({
     undoCanvas,
     redoCanvas,
     toggleFocusMode,
-    toggleShortcutsModal,
     nodeShortcuts: NODE_SHORTCUTS,
   });
 
