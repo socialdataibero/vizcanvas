@@ -23,6 +23,7 @@ import { inferChartConfigDefaults } from "@/lib/aiChartDefaults";
 import {
   buildStackedSortOptions,
   buildTipMarkOptions,
+  computeCategoricalYMargin,
   computeMaxGroupSum,
   computePlotSize,
   computeYMargin,
@@ -30,6 +31,8 @@ import {
   getCompactAxisMargin,
   getMarginBottomForLabels,
   getXTickRotation,
+  resolveStripChartMode,
+  shouldShowInlineCategoricalLegend,
 } from "@/lib/chartBarUtils";
 
 interface Props {
@@ -47,6 +50,7 @@ interface ChartTypeButtonProps {
 
 const BASE_CHART_COLOR = "#14b8a6";
 const ALL_CHART_FIELDS: ChartFieldKey[] = ["x", "y", "x2", "y2", "color", "size", "length", "label", "facet"];
+const MAX_INLINE_CATEGORICAL_LEGEND_ITEMS = 8;
 
 function getBarYMarkOptions(xColumn: string, yColumn: string, fill: string) {
   return {
@@ -168,6 +172,10 @@ function mergeAxisDisplayOptions(
 ) {
   const merged = mergeAxisOptions(existing, label);
   if (!columnName || !merged || typeof merged !== "object") {
+    return merged;
+  }
+
+  if ((merged as Record<string, unknown>).percent === true) {
     return merged;
   }
 
@@ -330,13 +338,16 @@ function compactSwatchLegendMarkup(markup: string) {
   align-items: flex-start !important;
   min-height: 22px !important;
   gap: 4px 6px;
+  max-width: 100%;
+  justify-content: flex-start !important;
 }
 :where(.${prefix}-swatches-wrap .${prefix}-swatch) {
   margin-right: 0 !important;
-  max-width: 120px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 180px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.15;
 }
 :where(.${prefix}-swatch > svg) {
   width: 10px;
@@ -965,6 +976,11 @@ function buildCustomStarterCode(
     columns.find((column) => isNumericType(column.type))?.name ??
     columns[1]?.name ??
     "value";
+  const valueColumn =
+    config.xColumn ??
+    columns.find((column) => isNumericType(column.type))?.name ??
+    columns[1]?.name ??
+    "value";
   const featureLabelColumn = config.xColumn ?? config.labelColumn ?? columns[0]?.name ?? "label";
   const selectedVariant = entry?.id ?? config.chartType;
 
@@ -1234,28 +1250,57 @@ function buildCustomStarterCode(
   }
 
   if (selectedVariant === "barcode-strip-plot") {
-    if (config.yColumn && config.colorColumn) {
+    const showLegendExpression = config.colorColumn
+      ? `new Set(data.map((d) => String(d["${config.colorColumn}"] ?? ""))).size <= ${MAX_INLINE_CATEGORICAL_LEGEND_ITEMS}`
+      : "false";
+    const stripMode = resolveStripChartMode({
+      hasCategory: Boolean(config.yColumn),
+      hasGroup: Boolean(config.colorColumn),
+      categoryEqualsGroup: config.yColumn === config.colorColumn,
+      groupCardinality: config.colorColumn ? 0 : 0,
+      maxLegendItems: MAX_INLINE_CATEGORICAL_LEGEND_ITEMS,
+    });
+
+    if (stripMode.mode === "grouped" && config.yColumn && config.colorColumn) {
       return `Plot.plot({
   width,
   height,
+  color: { legend: ${showLegendExpression} },
   x: {
     grid: true,
-    label: "${categoryColumn} (%) →",
-    percent: true
+    label: "${valueColumn} →"
   },
   y: {
     domain: Array.from(new Set(data.map((d) => d["${config.yColumn}"]))),
     reverse: true,
-    label: "↑ ${config.yColumn}",
-    labelAnchor: "top"
+    label: null
   },
   marks: [
     Plot.ruleX([0]),
-    Plot.tickX(data, Plot.normalizeX("sum", {
-      z: "${config.colorColumn}",
-      x: "${categoryColumn}",
-      y: "${config.yColumn}"
-    }))
+    Plot.tickX(data, {
+      x: "${valueColumn}",
+      y: "${config.yColumn}",
+      stroke: ${showLegendExpression} ? "${config.colorColumn}" : "#14b8a6"
+    })
+  ]
+})`;
+    }
+
+    if (config.yColumn) {
+      return `Plot.plot({
+  width,
+  height,
+  y: {
+    domain: Array.from(new Set(data.map((d) => d["${config.yColumn}"]))),
+    reverse: true,
+    label: null
+  },
+  marks: [
+    Plot.tickX(data, {
+      x: "${valueColumn}",
+      y: "${config.yColumn}",
+      stroke: "#14b8a6"
+    })
   ]
 })`;
     }
@@ -2378,33 +2423,76 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "barcode-strip-plot":
             if (xColumn) {
-              if (yColumn && colorColumn) {
+              const stripCategoryColumnInfo = yColumn
+                ? columns.find((column) => column.name === yColumn)
+                : undefined;
+              const stripGroupColumnInfo = colorColumn
+                ? columns.find((column) => column.name === colorColumn)
+                : undefined;
+              const stripMode = resolveStripChartMode({
+                hasCategory: Boolean(yColumn && stripCategoryColumnInfo && !isNumericType(stripCategoryColumnInfo.type)),
+                hasGroup: Boolean(colorColumn && stripGroupColumnInfo && !isNumericType(stripGroupColumnInfo.type)),
+                categoryEqualsGroup: yColumn === colorColumn,
+                groupCardinality: colorColumn
+                  ? new Set(data.map((row) => String((row as Record<string, unknown>)[colorColumn] ?? ""))).size
+                  : 0,
+                maxLegendItems: MAX_INLINE_CATEGORICAL_LEGEND_ITEMS,
+              });
+
+              if (stripMode.mode === "grouped" && yColumn && colorColumn) {
+                const stripYColumn = yColumn as string;
+                const stripColorColumn = colorColumn as string;
+                showGrid = true;
+                showColorLegend = stripMode.showLegend;
+                if (stripMode.showLegend) {
+                  legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+                }
+                plotOptions.y = {
+                  domain: Array.from(
+                    new Set(data.map((row) => (row as Record<string, unknown>)[stripYColumn]))
+                  ),
+                  reverse: true,
+                  label: null,
+                };
+                marks.push(Plot.ruleX([0], { stroke: "#94a3b8" }));
+                plotOptions.x = {
+                  grid: true,
+                  label: `${xColumn} →`,
+                };
+                marks.push(
+                  Plot.tickX(data, {
+                    x: xColumn,
+                    y: stripYColumn,
+                    stroke: stripMode.useGroupColor ? stripColorColumn : BASE_CHART_COLOR,
+                  } as Record<string, unknown>)
+                );
+              } else if (stripMode.mode === "category" && yColumn && stripCategoryColumnInfo && !isNumericType(stripCategoryColumnInfo.type)) {
+                const stripYColumn = yColumn as string;
+                showGrid = true;
+                plotOptions.y = {
+                  domain: Array.from(
+                    new Set(data.map((row) => (row as Record<string, unknown>)[stripYColumn]))
+                  ),
+                  reverse: true,
+                  label: null,
+                };
+                plotOptions.x = {
+                  grid: true,
+                  label: `${xColumn} →`,
+                };
+                marks.push(
+                  Plot.tickX(data, {
+                    x: xColumn,
+                    y: stripYColumn,
+                    stroke: BASE_CHART_COLOR,
+                  } as Record<string, unknown>)
+                );
+              } else {
                 showGrid = true;
                 plotOptions.x = {
                   grid: true,
-                  label: `${xColumn} (%) →`,
-                  percent: true,
+                  label: `${xColumn} →`,
                 };
-                plotOptions.y = {
-                  domain: Array.from(
-                    new Set(data.map((row) => (row as Record<string, unknown>)[yColumn]))
-                  ),
-                  reverse: true,
-                  label: `↑ ${yColumn}`,
-                  labelAnchor: "top",
-                };
-                marks.push(Plot.ruleX([0], { stroke: "#94a3b8" }));
-                marks.push(
-                  Plot.tickX(
-                    data,
-                    Plot.normalizeX("sum", {
-                      z: colorColumn,
-                      x: xColumn,
-                      y: yColumn,
-                    } as Record<string, unknown>)
-                  )
-                );
-              } else {
                 marks.push(
                   Plot.tickX(data, {
                     x: xColumn,
@@ -3037,13 +3125,20 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         const { color: variantColorOptions, ...restPlotOptions } = plotOptions as Record<string, unknown> & {
           color?: Record<string, unknown>;
         };
+        const categoricalYLabels =
+          yColumn && (variantId === "horizontal-bar" || variantId === "barX" || variantId === "barcode-strip-plot")
+            ? Array.from(
+                new Set(data.map((row) => String((row as Record<string, unknown>)[yColumn] ?? "")))
+              )
+            : [];
         // Compute marginLeft first — needed for legend alignment
         const dynamicMarginLeft =
           variantId === "grid-cartogram" || variantId === "grid"
             ? 12
             : variantId === "horizontal-bar" || variantId === "barX"
-              || (variantId === "barcode-strip-plot" && Boolean(yColumn))
-            ? 110
+            ? computeCategoricalYMargin(categoricalYLabels)
+            : variantId === "barcode-strip-plot" && Boolean(yColumn)
+            ? computeCategoricalYMargin(categoricalYLabels)
             : variantId === "stacked-bar" && xColumn && yColumn
             ? getCompactAxisMargin(computeMaxGroupSum(data as Record<string, unknown>[], xColumn, yColumn))
             : computeYMargin(
@@ -3053,6 +3148,24 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
                     ? data.map((row) => (row as Record<string, unknown>)[yColumn])
                     : []
               );
+
+        const colorColumnInfo = colorColumn
+          ? columns.find((column) => column.name === colorColumn)
+          : undefined;
+        const categoricalLegendColumnType = colorColumnInfo?.type;
+        const shouldSuppressCategoricalLegend =
+          showColorLegend &&
+          Boolean(colorColumn) &&
+          Boolean(categoricalLegendColumnType) &&
+          !(categoricalLegendColumnType ? isNumericType(categoricalLegendColumnType) : false) &&
+          !shouldShowInlineCategoricalLegend(
+            data.map((row) => (row as Record<string, unknown>)[colorColumn as string]),
+            MAX_INLINE_CATEGORICAL_LEGEND_ITEMS
+          );
+        if (shouldSuppressCategoricalLegend) {
+          showColorLegend = false;
+          legendOptions = null;
+        }
 
         // Pass marginLeft to the legend so swatches align with the plot area
         const resolvedColorOptions = variantColorOptions
@@ -3096,7 +3209,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               label: null,
             }
           : resolvedXAxisOptionsBase;
-        const suppressYLabel = variantId === "horizontal-bar" || variantId === "barX";
+        const suppressYLabel =
+          variantId === "horizontal-bar" || variantId === "barX" || variantId === "barcode-strip-plot";
         const resolvedYAxisOptionsBase = mergeAxisDisplayOptions(
           restPlotOptions.y,
           getAxisLabel("y", selectedCatalogEntry, chartType, variantId === "faceted-dodge" ? xColumn : yColumn, xColumn),
@@ -3157,7 +3271,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
           ...(resolvedColorOptions ? { color: resolvedColorOptions } : {}),
           ...finalPlotOptions,
           style: { fontSize: "10px", background: "transparent" },
-        });
+        } as PlotModule.PlotOptions);
         if (!cancelled) {
           let html = isGeospatialChart ? alignSvgTopLeft(chart.outerHTML) : chart.outerHTML;
           if (showColorLegend && !variantColorOptions) {

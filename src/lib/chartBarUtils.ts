@@ -85,6 +85,11 @@ export function getCompactAxisMargin(maxValue: number, fallback = 36): number {
 // ─── 5d. Y-axis margin matching actual tick format ──────────────────────────
 
 const MARGIN_FALLBACK = 36;
+const CATEGORICAL_Y_MARGIN_MIN = 52;
+const CATEGORICAL_Y_MARGIN_MAX = 110;
+const CATEGORICAL_Y_FONT = '10px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+export type StripChartMode = "simple" | "category" | "grouped";
 
 /**
  * Computes the Y-axis left margin based on actual tick label width.
@@ -105,6 +110,66 @@ export function computeYMargin(values: unknown[]): number {
 
   const formatted = Math.round(maxAbs).toLocaleString();
   return Math.max(MARGIN_FALLBACK, formatted.length * 8 + 20);
+}
+
+/**
+ * Computes the left margin for categorical Y-axis labels.
+ * Prefers real text measurement via canvas and falls back to a character-based estimate.
+ */
+export function computeCategoricalYMargin(
+  labels: string[],
+  options?: { min?: number; max?: number; font?: string }
+): number {
+  if (labels.length === 0) return CATEGORICAL_Y_MARGIN_MIN;
+
+  const min = options?.min ?? CATEGORICAL_Y_MARGIN_MIN;
+  const max = options?.max ?? CATEGORICAL_Y_MARGIN_MAX;
+  const font = options?.font ?? CATEGORICAL_Y_FONT;
+
+  let widestLabel = 0;
+
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.font = font;
+      widestLabel = Math.max(...labels.map((label) => context.measureText(label).width));
+    }
+  }
+
+  if (!Number.isFinite(widestLabel) || widestLabel <= 0) {
+    widestLabel = Math.max(...labels.map((label) => label.length * 6));
+  }
+
+  return Math.max(min, Math.min(max, Math.ceil(widestLabel + 20)));
+}
+
+export function shouldShowInlineCategoricalLegend(values: unknown[], maxItems = 8): boolean {
+  return new Set(values.map((value) => String(value ?? ""))).size <= maxItems;
+}
+
+export function resolveStripChartMode(options: {
+  hasCategory: boolean;
+  hasGroup: boolean;
+  categoryEqualsGroup: boolean;
+  groupCardinality: number;
+  maxLegendItems?: number;
+}): { mode: StripChartMode; showLegend: boolean; useGroupColor: boolean } {
+  const maxLegendItems = options.maxLegendItems ?? 8;
+
+  if (!options.hasCategory) {
+    return { mode: "simple", showLegend: false, useGroupColor: false };
+  }
+
+  if (!options.hasGroup || options.categoryEqualsGroup) {
+    return { mode: "category", showLegend: false, useGroupColor: false };
+  }
+
+  if (options.groupCardinality > maxLegendItems) {
+    return { mode: "category", showLegend: false, useGroupColor: false };
+  }
+
+  return { mode: "grouped", showLegend: true, useGroupColor: true };
 }
 
 // ─── 5b. Bottom margin computed from actual label lengths ────────────────────

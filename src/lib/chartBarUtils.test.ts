@@ -4,11 +4,14 @@ import {
   buildTipMarkOptions,
   computeMaxGroupSum,
   computePlotSize,
+  computeCategoricalYMargin,
   computeYMargin,
   detectsHighVariance,
   getCompactAxisMargin,
   getMarginBottomForLabels,
   getMarginBottomForRotation,
+  resolveStripChartMode,
+  shouldShowInlineCategoricalLegend,
   getXTickRotation,
 } from "@/lib/chartBarUtils";
 
@@ -172,6 +175,114 @@ describe("computeYMargin", () => {
   it("handles mixed types by extracting numeric values", () => {
     const margin = computeYMargin([1_000_000, "2000000", null, undefined]);
     expect(margin).toBeLessThan(60);
+  });
+});
+
+describe("computeCategoricalYMargin", () => {
+  it("returns the minimum margin for empty labels", () => {
+    expect(computeCategoricalYMargin([])).toBe(52);
+  });
+
+  it("returns more margin for longer labels", () => {
+    const short = computeCategoricalYMargin(["ABC"]);
+    const long = computeCategoricalYMargin(["Veracruz de Ignacio de la Llave"]);
+    expect(long).toBeGreaterThan(short);
+  });
+
+  it("caps the margin at the configured maximum", () => {
+    expect(computeCategoricalYMargin(["A".repeat(200)])).toBe(110);
+  });
+});
+
+describe("shouldShowInlineCategoricalLegend", () => {
+  it("shows the legend when the number of categories is within the limit", () => {
+    expect(shouldShowInlineCategoricalLegend(["A", "B", "C"], 8)).toBe(true);
+  });
+
+  it("hides the legend when the number of categories exceeds the limit", () => {
+    expect(
+      shouldShowInlineCategoricalLegend(
+        ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+        8
+      )
+    ).toBe(false);
+  });
+});
+
+describe("resolveStripChartMode", () => {
+  it("uses simple mode when there is no category", () => {
+    expect(
+      resolveStripChartMode({
+        hasCategory: false,
+        hasGroup: true,
+        categoryEqualsGroup: false,
+        groupCardinality: 3,
+      })
+    ).toEqual({
+      mode: "simple",
+      showLegend: false,
+      useGroupColor: false,
+    });
+  });
+
+  it("uses category mode when there is a category but no group", () => {
+    expect(
+      resolveStripChartMode({
+        hasCategory: true,
+        hasGroup: false,
+        categoryEqualsGroup: false,
+        groupCardinality: 0,
+      })
+    ).toEqual({
+      mode: "category",
+      showLegend: false,
+      useGroupColor: false,
+    });
+  });
+
+  it("uses category mode when category and group are the same field", () => {
+    expect(
+      resolveStripChartMode({
+        hasCategory: true,
+        hasGroup: true,
+        categoryEqualsGroup: true,
+        groupCardinality: 3,
+      })
+    ).toEqual({
+      mode: "category",
+      showLegend: false,
+      useGroupColor: false,
+    });
+  });
+
+  it("uses grouped mode when the group cardinality is manageable", () => {
+    expect(
+      resolveStripChartMode({
+        hasCategory: true,
+        hasGroup: true,
+        categoryEqualsGroup: false,
+        groupCardinality: 3,
+      })
+    ).toEqual({
+      mode: "grouped",
+      showLegend: true,
+      useGroupColor: true,
+    });
+  });
+
+  it("falls back to category mode when the group cardinality is too high", () => {
+    expect(
+      resolveStripChartMode({
+        hasCategory: true,
+        hasGroup: true,
+        categoryEqualsGroup: false,
+        groupCardinality: 20,
+      })
+    ).toEqual({
+      mode: "category",
+      showLegend: false,
+      useGroupColor: false,
+    });
   });
 });
 
