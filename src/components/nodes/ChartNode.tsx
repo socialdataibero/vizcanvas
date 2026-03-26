@@ -727,6 +727,49 @@ function aggregateCategoryValues(
   }));
 }
 
+function getWaffleUnit(values: number[], columnName?: string) {
+  const finiteValues = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (finiteValues.length === 0) return 1;
+
+  const maxValue = Math.max(...finiteValues);
+  if (isPercentageLikeColumnName(columnName) && maxValue <= 100) {
+    return 1;
+  }
+
+  return Math.max(1, roundUpToNiceStep(maxValue / 80));
+}
+
+function buildWaffleMark(
+  Plot: typeof PlotModule,
+  data: Record<string, unknown>[],
+  options: {
+    x: string;
+    y: string;
+    fill?: string;
+    reducer?: "sum" | "mean";
+  }
+) {
+  const reducer = options.reducer ?? getReducerForColumnName(options.y);
+  const waffleData = aggregateCategoryValues(
+    data,
+    options.x,
+    options.y,
+    reducer,
+    options.fill
+  );
+  const unit = getWaffleUnit(
+    waffleData.map((entry) => entry.value),
+    options.y
+  );
+
+  return Plot.waffleY(waffleData, {
+    x: "category",
+    y: "value",
+    fill: options.fill ? "group" : BASE_CHART_COLOR,
+    unit,
+  } as Record<string, unknown>);
+}
+
 async function buildTreemapLeaves(
   data: Record<string, unknown>[],
   labelColumn: string,
@@ -972,7 +1015,8 @@ function buildCustomStarterCode(
   config: ChartConfig,
   entry: ChartCatalogEntry | null,
   columns: ColumnInfo[],
-  geometryColumn: string | null
+  geometryColumn: string | null,
+  data: Record<string, unknown>[] = []
 ) {
   const categoryColumn = config.xColumn ?? columns[0]?.name ?? "category";
   const numericColumn =
@@ -1361,15 +1405,16 @@ function buildCustomStarterCode(
   }
 
   if (selectedVariant === "waffle-chart") {
+    const reducer = getReducerForColumnName(numericColumn);
     return `Plot.plot({
   width,
   height,
-  color: { legend: true },
+  ${config.colorColumn ? 'color: { legend: true },' : ""}
   marks: [
-    Plot.waffleY(data, {
+    waffleY(Plot, data, {
       x: "${categoryColumn}",
-      y: "${numericColumn}",
-      fill: "${config.colorColumn ?? categoryColumn}"
+      y: "${numericColumn}",${config.colorColumn ? `\n      fill: "${config.colorColumn}",` : ""}
+      reducer: "${reducer}"
     })
   ]
 })`;
@@ -1945,8 +1990,8 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
     return getIncompatibleChartConfigPatch(targetConfig, nextEntry, columns);
   };
   const starterCustomCode = useMemo(
-    () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn),
-    [columns, config, geometryColumn, selectedCatalogEntry]
+    () => buildCustomStarterCode(config, selectedCatalogEntry, columns, geometryColumn, data as Record<string, unknown>[]),
+    [columns, config, data, geometryColumn, selectedCatalogEntry]
   );
   const [customDraft, setCustomDraft] = useState(customCode ?? starterCustomCode);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied">("idle");
@@ -2062,6 +2107,16 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
               valueField: string
             ) => buildGeometryFeatures(rows, geometryField, labelField, valueField),
             parseGeometryValue,
+            waffleY: (
+              plot: typeof PlotModule,
+              rows: Record<string, unknown>[],
+              options: {
+                x: string;
+                y: string;
+                fill?: string;
+                reducer?: "sum" | "mean";
+              }
+            ) => buildWaffleMark(plot, rows, options),
           };
           const executeCustomPlot = new AsyncFunction(
             "Plot",
@@ -2069,9 +2124,26 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             "width",
             "height",
             "helpers",
+            "waffleY",
             `"use strict";\n${customCode}`
           );
-          const customResult = await executeCustomPlot(plotProxy, data, plotSize.width, plotSize.height, helpers);
+          const customResult = await executeCustomPlot(
+            plotProxy,
+            data,
+            plotSize.width,
+            plotSize.height,
+            helpers,
+            (
+              plot: typeof PlotModule,
+              rows: Record<string, unknown>[],
+              options: {
+                x: string;
+                y: string;
+                fill?: string;
+                reducer?: "sum" | "mean";
+              }
+            ) => buildWaffleMark(plot, rows, options)
+          );
           const customChart = plottedChart ?? customResult;
 
           if (!(customChart instanceof HTMLElement) && !(customChart instanceof SVGElement)) {
@@ -2237,22 +2309,34 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             break;
           case "waffle-chart":
             if (xColumn && yColumn) {
-              showColorLegend = true;
-              legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              showColorLegend = Boolean(colorColumn);
+              if (colorColumn) {
+                legendOptions = getCompactSwatchLegendOptions(plotSize.width);
+              }
               showGrid = false;
+              const uniqueXCount = new Set(
+                data.map((row) => (row as Record<string, unknown>)[xColumn])
+              ).size;
+              const tickRotate = getXTickRotation(uniqueXCount);
+              plotOptions.x = { tickRotate };
               const reducer = getReducerForColumnName(yColumn);
               const waffleData = aggregateCategoryValues(
                 data as Record<string, unknown>[],
                 xColumn,
                 yColumn,
                 reducer,
-                colorColumn || xColumn
+                colorColumn
+              );
+              const unit = getWaffleUnit(
+                waffleData.map((entry) => entry.value),
+                yColumn
               );
               marks.push(
                 Plot.waffleY(waffleData, {
                   x: "category",
                   y: "value",
-                  fill: colorColumn ? "group" : "category",
+                  fill: colorColumn ? "group" : BASE_CHART_COLOR,
+                  unit,
                 } as Record<string, unknown>)
               );
             }
@@ -3258,7 +3342,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
             : yColumn
             ? data.map((row) => (row as Record<string, unknown>)[yColumn])
             : [];
-        const suppressXLabel = variantId === "vertical-bar" || variantId === "bar" || variantId === "barY" || variantId === "stacked-bar" || variantId === "grouped-bar" || variantId === "dot-comparison" || variantId === "dot";
+        const suppressXLabel = variantId === "vertical-bar" || variantId === "bar" || variantId === "barY" || variantId === "stacked-bar" || variantId === "grouped-bar" || variantId === "dot-comparison" || variantId === "dot" || variantId === "waffle-chart";
         const resolvedXAxisOptionsBase = mergeAxisDisplayOptions(
           restPlotOptions.x,
           getAxisLabel("x", selectedCatalogEntry, chartType, xColumn, yColumn),
@@ -3413,7 +3497,7 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
 
   const syncCustomFromBuilder = (nextConfig: ChartConfig) => {
     const nextEntry = getChartCatalogEntry(nextConfig.chartCatalogId, nextConfig.chartType);
-    return buildCustomStarterCode(nextConfig, nextEntry, columns, geometryColumn);
+    return buildCustomStarterCode(nextConfig, nextEntry, columns, geometryColumn, data as Record<string, unknown>[]);
   };
 
   const updateChartConfig = (patch: Partial<ChartConfig>, options?: { syncCustom?: boolean }) => {
