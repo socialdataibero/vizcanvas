@@ -326,11 +326,11 @@ export default function ChartNodeBody({ node, presentationMode = false }: Props)
         // ── Standard chart path ──
         const marks: PlotModule.Markish[] = [];
         const plotOptions: Record<string, unknown> = {};
-        const variantId = selectedCatalogEntry?.id ?? chartType;
+        const variantId = selectedCatalogEntry?.id ?? chartType ?? "";
         const spikeMapVariant = selectedCatalogEntry?.id === "spike-map";
         const geospatialVariant = ["world-choropleth", "dot-map", "spike-map", "arc-map"].includes(selectedCatalogEntry?.id ?? "");
 
-        const ctx = { Plot, data, marks, plotOptions, plotSize, xColumn, yColumn, x2Column, y2Column, colorColumn, sizeColumn, lengthColumn, labelColumn, facetColumn, columns, geometryColumn, normalizedBeeswarmAnchor };
+        const ctx = { Plot, data, marks, plotOptions, plotSize, xColumn, yColumn, x2Column, y2Column, colorColumn, sizeColumn, lengthColumn, labelColumn, facetColumn, columns, geometryColumn: geometryColumn ?? undefined, normalizedBeeswarmAnchor };
 
         // ── Dispatch to chart builder ──
         let showColorLegend = false;

@@ -53,7 +53,7 @@ export function buildHistogram(ctx: ChartContext): ChartResult {
   const { Plot, data, marks, xColumn } = ctx;
 
   if (xColumn) {
-    marks.push(Plot.rectY(data, Plot.binX({ y: "count" }, { x: xColumn, fill: BASE_CHART_COLOR })));
+    marks.push(Plot.rectY(data, { ...Plot.binX({ y: "count" }, { x: xColumn }), fill: BASE_CHART_COLOR }));
     marks.push(Plot.ruleY([0]));
   }
 
