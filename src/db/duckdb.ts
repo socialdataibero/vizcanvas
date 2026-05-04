@@ -26,11 +26,12 @@ export async function initDuckDB(): Promise<void> {
 
       const bundle = await duckdb.selectBundle(DUCKDB_BUNDLES);
       const worker = new Worker(bundle.mainWorker!);
-      const logger = new duckdb.ConsoleLogger();
+      const logger = new duckdb.VoidLogger();
       db = new duckdb.AsyncDuckDB(logger, worker);
       await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
       conn = await db.connect();
-      console.log("[DuckDB] Initialized successfully");
+      await conn.query("SET memory_limit='8000MB'");
+
     } catch (err) {
       console.error("[DuckDB] Failed to initialize:", err);
       db = null;
@@ -203,7 +204,6 @@ export async function loadFile(
   const buffer = await file.arrayBuffer();
   const fileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   await database.registerFileBuffer(fileName, new Uint8Array(buffer));
-  console.log(`[DuckDB] Registered file: ${fileName} (${buffer.byteLength} bytes)`);
 
   // Determine file type and create table
   let createSql: string;
@@ -224,9 +224,7 @@ export async function loadFile(
       throw new Error(`Unsupported file type: ${ext}`);
   }
 
-  console.log(`[DuckDB] Creating table: ${createSql}`);
   await connection.query(createSql);
-  console.log(`[DuckDB] Table "${tableName}" created successfully`);
 
   // Get schema
   const schema = await getTableSchema(tableName);
@@ -322,13 +320,13 @@ export async function importTableData(
   const buffer = new TextEncoder().encode(JSON.stringify(rows));
   await database.registerFileBuffer(fileName, buffer);
 
-    const selectSql = columns
-      .map((column) => {
-        const columnName = escapeSqlIdentifier(column.name);
-        const columnType = normalizeDuckDBType(column.type);
-        return `CAST(${columnName} AS ${columnType}) AS ${columnName}`;
-      })
-      .join(", ");
+  const selectSql = columns
+    .map((column) => {
+      const columnName = escapeSqlIdentifier(column.name);
+      const columnType = normalizeDuckDBType(column.type);
+      return `CAST(${columnName} AS ${columnType}) AS ${columnName}`;
+    })
+    .join(", ");
 
   await connection.query(
     `CREATE TABLE ${safeTableName} AS SELECT ${selectSql} FROM read_json(${escapeSqlLiteral(fileName)}, auto_detect=true)`

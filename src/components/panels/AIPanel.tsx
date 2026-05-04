@@ -78,7 +78,7 @@ export default function AIPanel({ onApplyPlan }: Props) {
 
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          res = await fetch("/api/ai", {
+          res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ""}/ai/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             cache: "no-store",

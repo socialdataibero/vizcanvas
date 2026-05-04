@@ -13,12 +13,12 @@ import FromNodeBody from "./FromNode";
 import SQLNodeBody from "./SQLNode";
 import GroupNodeBody from "./GroupNode";
 import JoinNodeBody from "./JoinNode";
-import ChartNodeBody from "./ChartNode";
 import TableNodeBody from "./TableNode";
 import DistinctNodeBody from "./DistinctNode";
 import JSNodeBody from "./JSNode";
 import ControlsNodeBody from "./ControlsNode";
 import PresentationNodeBody from "./PresentationNodeBody";
+import ChartNodeBody from "./chart/ChartNode";
 
 interface Props {
   node: DAGNode;
