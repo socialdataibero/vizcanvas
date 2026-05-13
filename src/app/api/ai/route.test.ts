@@ -26,7 +26,7 @@ import { AI_GRAPH_TOOL_NAME } from "@/lib/aiGraph";
 import { POST } from "@/app/api/ai/route";
 
 function makeRequest(body: unknown): NextRequest {
-  return new Request("http://localhost:3000/api", {
+  return new Request(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -35,7 +35,7 @@ function makeRequest(body: unknown): NextRequest {
   }) as NextRequest;
 }
 
-describe("POST http://localhost:3000/api", () => {
+describe(`POST ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}`, () => {
   beforeEach(() => {
     anthropicCtorMock.mockReset();
     createMessageMock.mockReset();
