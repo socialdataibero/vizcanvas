@@ -1,16 +1,14 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { LuChartColumnBig, LuFolderOpen } from "react-icons/lu";
 import { useDataStore } from "@/stores/dataStore";
 import { isSupported } from "@/db/fileLoader";
-import { readPersistedUploadedTables } from "@/lib/persistence";
 import { formatBytes } from "@/lib/utils";
 import {
   JoinSuggestion,
   SuggestedMapFlow,
   getColumnRoleLabel,
-  getSuggestedMapFlows,
   hasGeometryColumn,
 } from "@/lib/columnSemantics";
 
@@ -104,20 +102,6 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
   const filteredTables = tables.filter((t) =>
     !search || t.name.toLowerCase().includes(search.toLowerCase())
   );
-  const mapSuggestionByTable = useMemo(() => {
-    const persistedRowsByTable = new Map(
-      readPersistedUploadedTables().map((table) => [table.name, table.rows] as const)
-    );
-    const tablesWithRows = tables.map((table) => ({
-      ...table,
-      rows: persistedRowsByTable.get(table.name),
-    }));
-
-    return new Map(
-      tables
-        .map((table) => [table.name, getSuggestedMapFlows(tablesWithRows, table.name)[0] ?? null] as const)
-    );
-  }, [tables]);
 
   return (
     <div
@@ -194,7 +178,7 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
                 >
                   {(() => {
                     const isGeospatialTable = hasGeometryColumn(table.columns);
-                    const topMapSuggestion = mapSuggestionByTable.get(table.name) ?? null;
+                    const topMapSuggestion = table.suggestedMapFlows?.[0] ?? null;
                     const canCreateMap = isGeospatialTable && Boolean(topMapSuggestion);
 
                     return (
@@ -239,7 +223,7 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
                   <div className="border-t border-gray-50 bg-gray-50/50">
                     {(() => {
                       const isGeospatialTable = hasGeometryColumn(table.columns);
-                      const topMapSuggestion = mapSuggestionByTable.get(table.name) ?? null;
+                      const topMapSuggestion = table.suggestedMapFlows?.[0] ?? null;
                       const candidateTableCount = tables.filter(
                         (candidate) => candidate.name !== table.name && !hasGeometryColumn(candidate.columns)
                       ).length;

@@ -1,6 +1,7 @@
 import { DAGNode } from "@/engine/types";
 import { AIGraphPlan } from "@/lib/aiGraph";
 import { getBaseCanvasNodeHeight, getCanvasNodeWidth } from "@/lib/canvasLayout";
+import { rectanglesOverlap, CanvasRect } from "@/lib/canvasPlacement";
 
 const AI_GRAPH_GAP_X = 96;
 const AI_GRAPH_GAP_Y = 220;
@@ -12,21 +13,12 @@ const AI_FLOW_COLLISION_PADDING = 56;
 
 type NodePosition = { x: number; y: number };
 type NodeSize = { width: number; height: number };
-type LayoutRect = NodePosition & NodeSize;
+type LayoutRect = CanvasRect;
 
 interface ExistingLayoutContext {
   nodes: Record<string, DAGNode>;
   positions: Record<string, NodePosition>;
   sizes: Record<string, NodeSize>;
-}
-
-function rectanglesOverlap(a: LayoutRect, b: LayoutRect, padding = 0): boolean {
-  return !(
-    a.x + a.width + padding <= b.x ||
-    b.x + b.width + padding <= a.x ||
-    a.y + a.height + padding <= b.y ||
-    b.y + b.height + padding <= a.y
-  );
 }
 
 function buildPlanRects(

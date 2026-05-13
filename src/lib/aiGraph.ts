@@ -22,22 +22,10 @@ import {
 
 export const AI_GRAPH_TOOL_NAME = "build_canvas_graph";
 
-export interface AIGraphNodeInput {
-  id: string;
-  type: NodeType;
-  config?: Record<string, unknown>;
-}
-
-export interface AIGraphEdgeInput {
-  from: string;
-  to: string;
-  toInputIndex?: number;
-}
-
 export interface AIGraphPlanInput {
   summary?: string;
-  nodes?: AIGraphNodeInput[];
-  edges?: AIGraphEdgeInput[];
+  nodes?: Array<{ id: string; type: NodeType; config?: Record<string, unknown> }>;
+  edges?: Array<{ from: string; to: string; toInputIndex?: number }>;
   focusNodeId?: string;
 }
 

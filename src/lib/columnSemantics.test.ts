@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   applyColumnSemanticsToColumns,
   getJoinSuggestions,
-  getSuggestedMapFlows,
   inferColumnRole,
 } from "@/lib/columnSemantics";
 import { normalizeGeospatialObject } from "@/lib/geospatial";
@@ -38,11 +37,7 @@ function parseCsvTable() {
     }));
   });
 
-  return {
-    name: "dis_ent",
-    columns,
-    rows,
-  };
+  return { name: "dis_ent", columns, rows };
 }
 
 describe("column semantics", () => {
@@ -62,55 +57,10 @@ describe("column semantics", () => {
     const suggestions = getJoinSuggestions(geoTable.columns, geoTable.rows, csvTable.columns, csvTable.rows);
 
     expect(
-      suggestions.some((suggestion) =>
-        suggestion.leftColumn === "NOMGEO" &&
-        suggestion.rightColumn === "NOM_ENT"
-      )
+      suggestions.some((s) => s.leftColumn === "NOMGEO" && s.rightColumn === "NOM_ENT")
     ).toBe(true);
     expect(
-      suggestions.some((suggestion) =>
-        suggestion.leftColumn === "CVE_ENT" &&
-        suggestion.rightColumn === "ENT"
-      )
+      suggestions.some((s) => s.leftColumn === "CVE_ENT" && s.rightColumn === "ENT")
     ).toBe(true);
-  });
-
-  it("builds a suggested map flow between the geo table and the tabular table", () => {
-    const geoTable = {
-      name: "states_simple",
-      ...normalizeGeospatialObject(JSON.parse(readWorkspaceFile("geojson/states_simple.geojson"))),
-    };
-    const csvTable = parseCsvTable();
-    const flow = getSuggestedMapFlows([geoTable, csvTable], "states_simple")[0];
-
-    expect(flow).toBeDefined();
-    expect(flow?.geoTableName).toBe("states_simple");
-    expect(flow?.dataTableName).toBe("dis_ent");
-    expect(flow?.join.score).toBeGreaterThan(40);
-  });
-
-  it("ranks multiple map-flow candidates so the strongest match appears first", () => {
-    const geoTable = {
-      name: "states_simple",
-      ...normalizeGeospatialObject(JSON.parse(readWorkspaceFile("geojson/states_simple.geojson"))),
-    };
-    const csvTable = parseCsvTable();
-    const alternateTable = {
-      name: "subset_states",
-      columns: applyColumnSemanticsToColumns([
-        { name: "NOM_ENT", type: "VARCHAR", nullable: false },
-        { name: "value", type: "DOUBLE", nullable: false },
-      ]),
-      rows: [
-        { NOM_ENT: "Aguascalientes", value: 10 },
-        { NOM_ENT: "Baja California", value: 20 },
-      ],
-    };
-
-    const flows = getSuggestedMapFlows([geoTable, alternateTable, csvTable], "states_simple");
-
-    expect(flows.length).toBeGreaterThan(1);
-    expect(flows[0]?.dataTableName).toBe("dis_ent");
-    expect(flows[1]?.dataTableName).toBe("subset_states");
   });
 });

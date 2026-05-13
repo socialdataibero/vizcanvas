@@ -1,5 +1,4 @@
 import { CHART_CATALOG } from "@/lib/chartCatalog";
-import { applyColumnSemanticsToColumns } from "@/lib/columnSemantics";
 import { ChartConfig, ColumnInfo } from "@/types/nodes";
 
 function isNumericColumn(column: ColumnInfo): boolean {
@@ -82,7 +81,7 @@ function chooseGridAxisColumn(
 }
 
 export function inferChartConfigDefaults(config: ChartConfig, columns: ColumnInfo[]): Partial<ChartConfig> {
-  const normalizedColumns = applyColumnSemanticsToColumns(columns);
+  const normalizedColumns = columns;
 
   if (normalizedColumns.length === 0 || !config.chartType) {
     return {};

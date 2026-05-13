@@ -7,7 +7,6 @@ import {
   parseVizCanvasFile,
   PersistedAppState,
   VIZCANVAS_FILE_EXTENSION,
-  writePersistedUploadedTables,
 } from "@/lib/persistence";
 import { clearAllTables, exportTableData, importTableData } from "@/db/duckdb";
 
@@ -32,6 +31,7 @@ export function useVizCanvasIO({
           columns: exported.columns,
           rowCount: exported.rowCount,
           rows: exported.rows,
+          dataEmbedded: exported.dataEmbedded,
           fileSize: table.fileSize,
           fileType: table.fileType,
         };
@@ -57,10 +57,10 @@ export function useVizCanvasIO({
     await clearAllTables();
 
     for (const table of parsed.data.tables) {
+      // Skip import if rows were not embedded (large table — data lives on server)
+      if ((table as { dataEmbedded?: boolean }).dataEmbedded === false) continue;
       await importTableData(table.name, table.rows, table.columns);
     }
-
-    writePersistedUploadedTables(parsed.data.tables);
 
     dataStoreApi.setState({
       tables: parsed.data.tables.map((table) => ({

@@ -1,4 +1,5 @@
 import { ColumnInfo } from "./nodes";
+import { SuggestedMapFlow } from "@/lib/columnSemantics";
 
 export interface DataSource {
   tables: DataTable[];
@@ -11,6 +12,7 @@ export interface DataTable {
   rowCount: number;
   fileSize?: number;
   fileType?: string;
+  suggestedMapFlows?: SuggestedMapFlow[];
 }
 
 export interface ColumnStats {

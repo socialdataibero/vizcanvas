@@ -14,19 +14,14 @@ import TitleCard from "@/components/panels/TitleCard";
 import AIPanel from "@/components/panels/AIPanel";
 import PageTabs from "@/components/panels/PageTabs";
 import ShortcutsModal from "@/components/ui/ShortcutsModal";
-import { NodeType, FromConfig, ColumnInfo, GroupConfig, ChartConfig, JoinConfig } from "@/types/nodes";
+import { NodeType, FromConfig } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
-import { DataTable } from "@/types/data";
-import { DAGNode } from "@/engine/types";
-import { AIGraphPlan } from "@/lib/aiGraph";
-import { buildAIPlanLayout } from "@/lib/aiPlanLayout";
 import { buildDeletedPageState, buildDuplicatedPageState } from "@/lib/canvasPages";
 import {
   buildCenteredDownstreamNodePosition,
   buildFirstNodeVerticalPosition,
   buildLaneDownstreamNodePosition,
   findPreferredAnchorNodeId,
-  findRightmostAnchorNodeId,
   findAvailableNodePosition,
 } from "@/lib/canvasPlacement";
 import {
@@ -42,163 +37,15 @@ import { getDefaultNodeConfig } from "@/lib/nodeConfig";
 import {
   buildPersistedAppState,
   parsePersistedAppState,
-  readPersistedAppState,
   PersistedAppState,
-  readPersistedUploadedTables,
-  writePersistedAppState,
 } from "@/lib/persistence";
-import { SuggestedMapFlow, applyColumnSemanticsToColumns, getSuggestedMapFlows } from "@/lib/columnSemantics";
-import { inferChartConfigDefaults } from "@/lib/aiChartDefaults";
-import { getNodeTypeLabel } from "@/lib/utils";
-import { useAutoSave } from "@/hooks/useAutoSave";
+import { clearHydratedNodeExecution, hasReferencedSampleData } from "@/lib/canvasAIHelpers";
 import { useCanvasHistory } from "@/hooks/useCanvasHistory";
 import { useCanvasPresentation } from "@/hooks/useCanvasPresentation";
 import { useVizCanvasIO } from "@/hooks/useVizCanvasIO";
+import { useMapFlowCreation } from "@/hooks/useMapFlowCreation";
+import { useAIPlanOrchestration } from "@/hooks/useAIPlanOrchestration";
 import { v4 as uuidv4 } from "uuid";
-
-const AI_SOURCE_NODE_TYPES: NodeType[] = [
-  "from",
-  "sql",
-  "group",
-  "join",
-  "table",
-  "distinct",
-  "javascript",
-  "controls",
-];
-
-function isReusableAISourceNode(node: DAGNode): boolean {
-  return AI_SOURCE_NODE_TYPES.includes(node.type) && node.status !== "error";
-}
-
-function describeAINode(node: DAGNode): string {
-  if (node.type === "from") {
-    return `el nodo Source "${(node.config as FromConfig).tableName}"`;
-  }
-
-  return `el nodo ${getNodeTypeLabel(node.type)}`;
-}
-
-function isNumericColumn(column: ColumnInfo): boolean {
-  return /int|decimal|double|float|real|numeric|number|hugeint|bigint|smallint|tinyint/i.test(column.type);
-}
-
-function isTemporalColumn(column: ColumnInfo): boolean {
-  return /date|time|timestamp/i.test(column.type);
-}
-
-function isSpatialColumn(column: ColumnInfo): boolean {
-  return column.role === "geometry" || column.role === "latitude" || column.role === "longitude";
-}
-
-function isCategoricalColumn(column: ColumnInfo): boolean {
-  if (isSpatialColumn(column)) return false;
-  return /char|text|string|uuid/i.test(column.type) || isTemporalColumn(column);
-}
-
-function chooseGroupByColumn(columns: ColumnInfo[]): string | undefined {
-  return (
-    columns.find((column) => isCategoricalColumn(column))?.name ??
-    columns.find((column) => !isNumericColumn(column))?.name ??
-    columns[0]?.name
-  );
-}
-
-function chooseMetricColumn(columns: ColumnInfo[], excludedColumns: string[]): ColumnInfo | undefined {
-  return (
-    columns.find((column) => !excludedColumns.includes(column.name) && !isSpatialColumn(column) && isNumericColumn(column)) ??
-    columns.find((column) => !excludedColumns.includes(column.name) && !isSpatialColumn(column))
-  );
-}
-
-function chooseMapLabelColumn(columns: ColumnInfo[], excludedColumns: string[]): ColumnInfo | undefined {
-  return (
-    columns.find((column) =>
-      !excludedColumns.includes(column.name) &&
-      !isSpatialColumn(column) &&
-      !isNumericColumn(column) &&
-      /name|nom|label|region|state|country|province|geo/i.test(column.name)
-    ) ??
-    columns.find((column) =>
-      !excludedColumns.includes(column.name) &&
-      !isSpatialColumn(column) &&
-      !isNumericColumn(column) &&
-      column.role === "join_key"
-    ) ??
-    columns.find((column) =>
-      !excludedColumns.includes(column.name) &&
-      !isSpatialColumn(column) &&
-      isCategoricalColumn(column)
-    ) ??
-    columns.find((column) =>
-      !excludedColumns.includes(column.name) &&
-      !isSpatialColumn(column)
-    )
-  );
-}
-
-function getAvailableColumnsForNode(node: DAGNode | undefined, tables: DataTable[]): ColumnInfo[] {
-  if (!node) return [];
-  if (node.result?.columns?.length) return node.result.columns;
-
-  if (node.type === "from") {
-    const tableName = (node.config as FromConfig).tableName;
-    return tables.find((table) => table.name === tableName)?.columns ?? [];
-  }
-
-  return [];
-}
-
-function clearHydratedNodeExecution(nodes: Record<string, DAGNode>): Record<string, DAGNode> {
-  return Object.fromEntries(
-    Object.entries(nodes).map(([nodeId, node]) => [
-      nodeId,
-      {
-        ...node,
-        status: "idle" as const,
-        error: undefined,
-        result: null,
-      },
-    ])
-  );
-}
-
-function hasReferencedSampleData(nodes: Record<string, DAGNode>): boolean {
-  return Object.values(nodes).some(
-    (node) =>
-      node.type === "from" &&
-      (node.config as FromConfig).tableName?.trim().toLowerCase() === "sample_data"
-  );
-}
-
-function pickAIAutoConnectSource(
-  nodes: Record<string, DAGNode>,
-  currentPageId: string,
-  createdNodeIds: Set<string>,
-  selectedNodeId: string | null
-): DAGNode | null {
-  const candidates = Object.values(nodes).filter(
-    (node) =>
-      node.pageId === currentPageId &&
-      !createdNodeIds.has(node.id) &&
-      isReusableAISourceNode(node)
-  );
-
-  if (selectedNodeId) {
-    const selectedCandidate = candidates.find((node) => node.id === selectedNodeId);
-    if (selectedCandidate) return selectedCandidate;
-  }
-
-  const fromCandidates = candidates.filter((node) => node.type === "from");
-  if (fromCandidates.length === 1) return fromCandidates[0];
-
-  const successfulCandidates = candidates.filter((node) => node.status === "success" && node.result);
-  if (successfulCandidates.length === 1) return successfulCandidates[0];
-
-  if (candidates.length === 1) return candidates[0];
-
-  return null;
-}
 
 export default function CanvasApp() {
   const { ready, loading, error } = useDuckDB();
@@ -290,8 +137,8 @@ export default function CanvasApp() {
   }), [canvasId, currentPageId, edges, focusMode, frames, nodePositions, nodeSizes, nodes, pages, title]);
 
   const persistCanvasStateNow = useCallback(() => {
-    writePersistedAppState(buildCurrentPersistedState());
-  }, [buildCurrentPersistedState]);
+    // no-op until auth-backed persistence is implemented
+  }, []);
 
   const handleSaveSnapshot = useCallback(() => {
     const snapshotData = JSON.stringify(buildCurrentPersistedState());
@@ -582,159 +429,16 @@ export default function CanvasApp() {
     setTimeout(() => dagStoreApi.getState().executeNode(nodeId), 100);
   }, [addNode, currentPageId, nodes]);
 
-  const handleCreateMapFlow = useCallback((tableName: string, selectedSuggestion?: SuggestedMapFlow) => {
-    const persistedRowsByTable = new Map(
-      readPersistedUploadedTables().map((table) => [table.name, table.rows] as const)
-    );
-    const tablesWithRows = tables.map((table) => ({
-      ...table,
-      columns: applyColumnSemanticsToColumns(table.columns),
-      rows: persistedRowsByTable.get(table.name),
-    }));
-    const suggestion =
-      selectedSuggestion &&
-      (selectedSuggestion.geoTableName === tableName || selectedSuggestion.dataTableName === tableName)
-        ? selectedSuggestion
-        : getSuggestedMapFlows(tablesWithRows, tableName)[0];
-
-    if (!suggestion) {
-      window.alert("No pude inferir automáticamente un mapa para esta tabla. Necesito una tabla geográfica y otra tabular con una llave común.");
-      return;
-    }
-
-    const geoTable = tablesWithRows.find((table) => table.name === suggestion.geoTableName);
-    const dataTable = tablesWithRows.find((table) => table.name === suggestion.dataTableName);
-    if (!geoTable || !dataTable) {
-      window.alert("No pude resolver las tablas necesarias para crear el flujo de mapa.");
-      return;
-    }
-
-    const joinColumns = [suggestion.join.leftColumn, suggestion.join.rightColumn];
-    const labelColumn =
-      chooseMapLabelColumn(geoTable.columns, [suggestion.join.leftColumn])?.name ??
-      suggestion.join.leftColumn;
-    const valueColumn = chooseMetricColumn(dataTable.columns, [suggestion.join.rightColumn])?.name;
-
-    if (!valueColumn) {
-      window.alert("No encontré una columna numérica para colorear el mapa en la tabla tabular.");
-      return;
-    }
-
-    const pageNodes = Object.entries(nodes).filter(([, node]) => node.pageId === currentPageId);
-    const visibleNodes = Object.fromEntries(pageNodes);
-    const rightmostAnchorNodeId = findRightmostAnchorNodeId({
-      visibleNodes,
-      nodePositions,
-      nodeSizes,
-      getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
-    });
-    const anchorNodeId = rightmostAnchorNodeId ?? undefined;
-    const anchorNode = anchorNodeId ? nodes[anchorNodeId] : undefined;
-    const anchorPosition = anchorNodeId ? nodePositions[anchorNodeId] : undefined;
-    const anchorWidth =
-      anchorNodeId && anchorNode
-        ? nodeSizes[anchorNodeId]?.width ?? getCanvasNodeWidth(anchorNode.type)
-        : 0;
-    const basePosition = !anchorNode || !anchorPosition
-      ? buildFirstNodeVerticalPosition({
-          surfaceHeight: typeof window !== "undefined" ? window.innerHeight : 900,
-          nodeHeight: getCanvasNodeHeight("join", "", {}),
-        })
-      : {
-          x: anchorPosition.x + anchorWidth + 180,
-          y: anchorPosition.y + 20,
-        };
-
-    const draftNodes: Record<string, DAGNode> = { ...visibleNodes };
-    const draftPositions = { ...nodePositions };
-    const draftSizes = { ...nodeSizes };
-    let draftIndex = 0;
-
-    const reservePosition = (type: NodeType, preferredPosition: { x: number; y: number }) => {
-      const position = findAvailableNodePosition({
-        type,
-        preferredPosition,
-        visibleNodes: draftNodes,
-        nodePositions: draftPositions,
-        nodeSizes: draftSizes,
-        getNodeWidth: (nodeType) => getCanvasNodeWidth(nodeType as NodeType),
-        getNodeHeight: (nodeType) => getCanvasNodeHeight(nodeType as NodeType, "", {}),
-      });
-
-      const draftNodeId = `draft-map-${draftIndex++}`;
-      draftNodes[draftNodeId] = {
-        id: draftNodeId,
-        type,
-        config: getDefaultNodeConfig(type),
-        inputIds: [],
-        result: null,
-        status: "idle",
-        pageId: currentPageId,
-      };
-      draftPositions[draftNodeId] = position;
-      draftSizes[draftNodeId] = {
-        width: getCanvasNodeWidth(type),
-        height: getCanvasNodeHeight(type, "", {}),
-      };
-
-      return position;
-    };
-
-    const geoPosition = reservePosition("from", {
-      x: basePosition.x - 60,
-      y: basePosition.y - 170,
-    });
-    const dataPosition = reservePosition("from", {
-      x: basePosition.x - 60,
-      y: basePosition.y + 150,
-    });
-    const joinPosition = reservePosition("join", {
-      x: basePosition.x + 360,
-      y: basePosition.y - 10,
-    });
-    const chartPosition = reservePosition("chart", {
-      x: basePosition.x + 770,
-      y: basePosition.y - 10,
-    });
-
-    const geoSourceId = addNode("from", { tableName: geoTable.name, filters: [] } as FromConfig, currentPageId);
-    const dataSourceId = addNode("from", { tableName: dataTable.name, filters: [] } as FromConfig, currentPageId);
-    const joinId = addNode("join", {
-      joinType: "LEFT",
-      leftColumn: suggestion.join.leftColumn,
-      rightColumn: suggestion.join.rightColumn,
-    } as JoinConfig, currentPageId);
-    const chartId = addNode("chart", {
-      chartType: "choropleth",
-      chartCatalogId: "world-choropleth",
-      xColumn: labelColumn,
-      yColumn: valueColumn,
-    } as ChartConfig, currentPageId);
-
-    setNodePositions((prev) => ({
-      ...prev,
-      [geoSourceId]: geoPosition,
-      [dataSourceId]: dataPosition,
-      [joinId]: joinPosition,
-      [chartId]: chartPosition,
-    }));
-
-    setTimeout(() => {
-      dagStoreApi.getState().addEdge(geoSourceId, joinId, 0);
-      dagStoreApi.getState().addEdge(dataSourceId, joinId, 1);
-      dagStoreApi.getState().addEdge(joinId, chartId, 0);
-      setSelectedNode(chartId);
-      void dagStoreApi.getState().executeAll();
-    }, 80);
-
-    console.info("[Map Flow]", {
-      geoTable: geoTable.name,
-      dataTable: dataTable.name,
-      joinColumns,
-      labelColumn,
-      valueColumn,
-    });
-  }, [addNode, currentPageId, nodePositions, nodeSizes, nodes, setSelectedNode, tables]);
+  const handleCreateMapFlow = useMapFlowCreation({
+    addNode,
+    currentPageId,
+    nodes,
+    nodePositions,
+    nodeSizes,
+    tables,
+    setNodePositions,
+    setSelectedNode,
+  });
 
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
     setNodePositions((prev) => ({ ...prev, [nodeId]: { x, y } }));
@@ -887,200 +591,23 @@ export default function CanvasApp() {
     return () => window.cancelAnimationFrame(frameRequest);
   }, [frames, hydrated, nodePositions, nodeSizes, nodes]);
 
-  const applyAIPlan = useCallback(async (plan: AIGraphPlan) => {
-    const issues: string[] = [];
-
-    if (plan.nodes.length === 0) {
-      return issues;
-    }
-
-    if (plan.nodes.length > 1 && plan.edges.length === 0) {
-      issues.push("La IA creó varios nodos sin conexiones; puede que necesiten enlazarse manualmente.");
-    }
-
-    const existingNodesOnPage = Object.fromEntries(
-      Object.entries(dagStoreApi.getState().nodes).filter(([, node]) => node.pageId === currentPageId)
-    );
-    const plannedPositions = buildAIPlanLayout(plan, {
-      nodes: existingNodesOnPage,
-      positions: nodePositions,
-      sizes: nodeSizes,
-    });
-    const nodeIdMap: Record<string, string> = {};
-    const planNodeById = new Map(plan.nodes.map((node) => [node.id, node]));
-    const createdPositions: Record<string, { x: number; y: number }> = {};
-    const createdNodeIds = new Set<string>();
-
-    for (const plannedNode of plan.nodes) {
-      const realNodeId = addNode(plannedNode.type, plannedNode.config, currentPageId);
-      nodeIdMap[plannedNode.id] = realNodeId;
-      createdNodeIds.add(realNodeId);
-      createdPositions[realNodeId] = plannedPositions[plannedNode.id] ?? {
-        x: 200 + Math.random() * 300,
-        y: 200 + Math.random() * 200,
-      };
-    }
-
-    setNodePositions((prev) => ({ ...prev, ...createdPositions }));
-
-    const connectedInputsByNode = new Map<string, Set<number>>();
-    const registerIncomingConnection = (nodeId: string, inputIndex: number) => {
-      connectedInputsByNode.set(nodeId, new Set([...(connectedInputsByNode.get(nodeId) ?? []), inputIndex]));
-    };
-
-    for (const edge of plan.edges) {
-      const currentNodes = dagStoreApi.getState().nodes;
-      const fromNodeId = nodeIdMap[edge.from] ?? (currentNodes[edge.from] ? edge.from : undefined);
-      const toNodeId = nodeIdMap[edge.to] ?? (currentNodes[edge.to] ? edge.to : undefined);
-      if (!fromNodeId || !toNodeId) continue;
-      if (!createdNodeIds.has(fromNodeId) && !createdNodeIds.has(toNodeId)) continue;
-      const edgeId = dagStoreApi.getState().addEdge(fromNodeId, toNodeId, edge.toInputIndex);
-      if (!edgeId) {
-        issues.push(`No se pudo conectar ${edge.from} con ${edge.to}.`);
-        continue;
-      }
-      registerIncomingConnection(toNodeId, edge.toInputIndex);
-    }
-
-    const autoConnectSource = pickAIAutoConnectSource(
-      dagStoreApi.getState().nodes,
-      currentPageId,
-      createdNodeIds,
-      selectedNodeId
-    );
-
-    for (const plannedNode of plan.nodes) {
-      const realNodeId = nodeIdMap[plannedNode.id];
-      if (!realNodeId || plannedNode.type === "from") continue;
-
-      const connectedInputs = connectedInputsByNode.get(realNodeId) ?? new Set<number>();
-      if (plannedNode.type === "join") {
-        const missingInputIndex = [0, 1].find((inputIndex) => !connectedInputs.has(inputIndex));
-        if (missingInputIndex === undefined) continue;
-        if (!autoConnectSource) continue;
-
-        const upstreamIds = dagStoreApi.getState().getUpstreamNodeIds(realNodeId);
-        if (upstreamIds.includes(autoConnectSource.id)) continue;
-
-        const edgeId = dagStoreApi.getState().addEdge(autoConnectSource.id, realNodeId, missingInputIndex);
-        if (!edgeId) continue;
-
-        registerIncomingConnection(realNodeId, missingInputIndex);
-        issues.push(
-          `Se conectó automáticamente ${describeAINode(autoConnectSource)} al nodo ${getNodeTypeLabel(plannedNode.type)}.`
-        );
-        continue;
-      }
-
-      if (connectedInputs.size > 0 || !autoConnectSource) continue;
-
-      const edgeId = dagStoreApi.getState().addEdge(autoConnectSource.id, realNodeId, 0);
-      if (!edgeId) continue;
-
-      registerIncomingConnection(realNodeId, 0);
-      issues.push(`Se conectó automáticamente ${describeAINode(autoConnectSource)} al nodo ${getNodeTypeLabel(plannedNode.type)}.`);
-    }
-
-    const unresolvedRoots = plan.nodes.filter((plannedNode) => {
-      if (plannedNode.type === "from") return false;
-      const realNodeId = nodeIdMap[plannedNode.id];
-      if (!realNodeId) return false;
-      const connectedInputs = connectedInputsByNode.get(realNodeId) ?? new Set<number>();
-      return plannedNode.type === "join" ? connectedInputs.size < 2 : connectedInputs.size === 0;
-    });
-
-    if (unresolvedRoots.length > 0 && !autoConnectSource) {
-      issues.push(
-        "La IA no pudo identificar con claridad qué nodo existente debía alimentar el flujo nuevo."
-      );
-    }
-
-    for (const plannedNode of plan.nodes) {
-      const realNodeId = nodeIdMap[plannedNode.id];
-      const createdNode = realNodeId ? dagStoreApi.getState().nodes[realNodeId] : undefined;
-      if (!realNodeId || !createdNode) continue;
-
-      if (createdNode.type === "group") {
-        const upstreamIds = dagStoreApi.getState().getUpstreamNodeIds(realNodeId);
-        const upstreamNode = upstreamIds[0] ? dagStoreApi.getState().nodes[upstreamIds[0]] : undefined;
-        const availableColumns = getAvailableColumnsForNode(upstreamNode, tables);
-        const currentConfig = createdNode.config as GroupConfig;
-        const downstreamChart = plan.edges
-          .filter((edge) => edge.from === plannedNode.id)
-          .map((edge) => planNodeById.get(edge.to))
-          .find((node): node is NonNullable<typeof node> => Boolean(node?.type === "chart"));
-        const chartConfig = downstreamChart?.config as ChartConfig | undefined;
-
-        let nextGroupByColumns = currentConfig.groupByColumns ?? [];
-
-        if (nextGroupByColumns.length === 0 && availableColumns.length > 0) {
-          const preferredGroupColumn =
-            chartConfig?.xColumn && availableColumns.some((column) => column.name === chartConfig.xColumn)
-              ? chartConfig.xColumn
-              : chooseGroupByColumn(availableColumns);
-
-          if (preferredGroupColumn) {
-            nextGroupByColumns = [preferredGroupColumn];
-          }
-        }
-
-        if (
-          nextGroupByColumns.join("|") !== (currentConfig.groupByColumns ?? []).join("|")
-        ) {
-          dagStoreApi.getState().updateNodeConfig(realNodeId, {
-            groupByColumns: nextGroupByColumns,
-          } as Partial<GroupConfig>);
-          issues.push("Se completó automáticamente la agrupación mínima del nodo group.");
-        }
-      }
-    }
-
-    await dagStoreApi.getState().executeAll();
-
-    for (const plannedNode of plan.nodes) {
-      const realNodeId = nodeIdMap[plannedNode.id];
-      const createdNode = realNodeId ? dagStoreApi.getState().nodes[realNodeId] : undefined;
-      if (!realNodeId || !createdNode || createdNode.type !== "chart") continue;
-
-      const upstreamIds = dagStoreApi.getState().getUpstreamNodeIds(realNodeId);
-      const upstreamNode = upstreamIds[0] ? dagStoreApi.getState().nodes[upstreamIds[0]] : undefined;
-      const availableColumns = getAvailableColumnsForNode(upstreamNode, tables);
-      const configPatch = inferChartConfigDefaults(createdNode.config as ChartConfig, availableColumns);
-
-      if (Object.keys(configPatch).length === 0) continue;
-
-      dagStoreApi.getState().updateNodeConfig(realNodeId, configPatch);
-      issues.push("Se completó automáticamente la configuración mínima del nodo chart.");
-    }
-
-    const createdNodes = dagStoreApi.getState().nodes;
-    const failedNodes = plan.nodes
-      .map((plannedNode) => {
-        const createdNode = createdNodes[nodeIdMap[plannedNode.id]];
-        if (!createdNode || createdNode.status !== "error") return null;
-        return `${getNodeTypeLabel(plannedNode.type)}: ${createdNode.error ?? "error desconocido"}`;
-      })
-      .filter((entry): entry is string => entry !== null);
-
-    if (failedNodes.length > 0) {
-      issues.push(`Algunos nodos necesitan revisión: ${failedNodes.join(" | ")}`);
-    }
-
-    const preferredFocusId = plan.focusNodeId ? nodeIdMap[plan.focusNodeId] : undefined;
-    const fallbackFocusId = nodeIdMap[plan.nodes[plan.nodes.length - 1]?.id];
-    setSelectedNode(preferredFocusId ?? fallbackFocusId ?? null);
-
-    return issues;
-  }, [addNode, currentPageId, nodePositions, nodeSizes, selectedNodeId, setSelectedNode, tables]);
+  const applyAIPlan = useAIPlanOrchestration({
+    addNode,
+    currentPageId,
+    nodePositions,
+    nodeSizes,
+    selectedNodeId,
+    tables,
+    setNodePositions,
+    setSelectedNode,
+  });
 
   useEffect(() => {
     if (hydrated) return;
-    const saved = readPersistedAppState();
-    if (saved) {
-      applyPersistedState(saved);
-    }
+    // Persistence disabled until auth — clear any stale localStorage data and start fresh.
+    localStorage.clear();
     setHydrated(true);
-  }, [applyPersistedState, hydrated]);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated || !ready) return;
@@ -1111,12 +638,6 @@ export default function CanvasApp() {
     if (!hydrated || !ready) return;
     void dagStoreApi.getState().executeAll();
   }, [hydrated, ready, tables]);
-
-  useAutoSave(
-    hydrated
-      ? buildCurrentPersistedState()
-      : null
-  );
 
   // Keyboard shortcuts
   if (loading && !ready) {
