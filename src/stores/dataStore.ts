@@ -17,6 +17,7 @@ interface DataState {
 
   initialize: () => Promise<void>;
   uploadFile: (file: File) => Promise<DataTable>;
+  deleteFile: (tableName: string) => Promise<void>;
   refreshTables: () => Promise<void>;
   refreshMapFlows: () => Promise<void>;
   loadColumnStats: (tableName: string) => Promise<void>;
@@ -40,6 +41,16 @@ const dataStore = createStore<DataState>((set, get) => ({
     } catch (err) {
       set({ error: String(err), loading: false });
     }
+  },
+
+  deleteFile: async (tableName: string) => {
+    const table = get().tables.find((t) => t.name === tableName);
+    const endpoint = table?.filename
+      ? `${API_BASE}/files/${encodeURIComponent(table.filename)}`
+      : `${API_BASE}/tables/${encodeURIComponent(tableName)}`;
+    const res = await fetch(endpoint, { method: "DELETE" });
+    if (!res.ok && res.status !== 404) throw new Error(`Error ${res.status}`);
+    set((state) => ({ tables: state.tables.filter((t) => t.name !== tableName) }));
   },
 
   uploadFile: async (file: File) => {

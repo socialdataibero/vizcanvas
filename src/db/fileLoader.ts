@@ -40,6 +40,7 @@ export async function loadDataFile(file: File): Promise<DataTable> {
     rowCount: data.rowCount,
     fileSize: data.size,
     fileType: file.name.split(".").pop()?.toLowerCase(),
+    filename: data.filename,
   };
 }
 

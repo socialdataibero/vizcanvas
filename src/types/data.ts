@@ -12,6 +12,7 @@ export interface DataTable {
   rowCount: number;
   fileSize?: number;
   fileType?: string;
+  filename?: string;
   suggestedMapFlows?: SuggestedMapFlow[];
 }
 

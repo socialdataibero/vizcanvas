@@ -72,8 +72,10 @@ function getJoinStrength(suggestion: JoinSuggestion): {
 export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
   const tables = useDataStore((s) => s.tables);
   const uploadFile = useDataStore((s) => s.uploadFile);
+  const deleteFile = useDataStore((s) => s.deleteFile);
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -213,6 +215,20 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
                     style={{ background: "#14b8a6" }}
                   >
                     +
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!confirm(`Delete "${table.name}"?`)) return;
+                      setDeleting(table.name);
+                      try { await deleteFile(table.name); } finally { setDeleting(null); }
+                    }}
+                    title="Delete table"
+                    disabled={deleting === table.name}
+                    className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-white transition-opacity disabled:opacity-50"
+                    style={{ background: "#ef4444" }}
+                  >
+                    {deleting === table.name ? "…" : "✕"}
                   </button>
                       </>
                     );
