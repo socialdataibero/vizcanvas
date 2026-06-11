@@ -24,6 +24,7 @@ interface Params {
   tables: DataTable[];
   setNodePositions: React.Dispatch<React.SetStateAction<Record<string, { x: number; y: number }>>>;
   setSelectedNode: (id: string | null) => void;
+  onError?: (title: string, message: string) => void;
 }
 
 export function useMapFlowCreation({
@@ -35,6 +36,7 @@ export function useMapFlowCreation({
   tables,
   setNodePositions,
   setSelectedNode,
+  onError,
 }: Params) {
   return useCallback(
     (tableName: string, selectedSuggestion?: SuggestedMapFlow) => {
@@ -45,21 +47,21 @@ export function useMapFlowCreation({
           : tables.find((t) => t.name === tableName)?.suggestedMapFlows?.[0];
 
       if (!suggestion) {
-        window.alert("No pude inferir automáticamente un mapa para esta tabla. Necesito una tabla geográfica y otra tabular con una llave común.");
+        onError?.("No se pudo crear el mapa", "Necesito una tabla geográfica y otra tabular con una llave común para inferir el mapa automáticamente.");
         return;
       }
 
       const geoTable = tables.find((t) => t.name === suggestion.geoTableName);
       const dataTable = tables.find((t) => t.name === suggestion.dataTableName);
       if (!geoTable || !dataTable) {
-        window.alert("No pude resolver las tablas necesarias para crear el flujo de mapa.");
+        onError?.("Tablas no encontradas", "No se pudieron resolver las tablas necesarias para crear el flujo de mapa.");
         return;
       }
 
       const labelColumn = chooseMapLabelColumn(geoTable.columns, [suggestion.join.leftColumn])?.name ?? suggestion.join.leftColumn;
       const valueColumn = chooseMetricColumn(dataTable.columns, [suggestion.join.rightColumn])?.name;
       if (!valueColumn) {
-        window.alert("No encontré una columna numérica para colorear el mapa en la tabla tabular.");
+        onError?.("Sin columna numérica", "No encontré una columna numérica para colorear el mapa en la tabla tabular.");
         return;
       }
 

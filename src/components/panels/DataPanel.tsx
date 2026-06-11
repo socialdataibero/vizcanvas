@@ -5,6 +5,9 @@ import { LuChartColumnBig, LuFolderOpen } from "react-icons/lu";
 import { useDataStore } from "@/stores/dataStore";
 import { isSupported } from "@/db/fileLoader";
 import { formatBytes } from "@/lib/utils";
+import Dialog from "@/components/ui/Dialog";
+
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 import {
   JoinSuggestion,
   SuggestedMapFlow,
@@ -77,18 +80,43 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [dialog, setDialog] = useState<{ title: string; message: string; type?: "info" | "error" | "warning" | "confirm"; onConfirm?: () => void } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFiles = async (files: FileList | File[]) => {
     const inputFiles = Array.from(files);
-    const unsupported = inputFiles.filter((f) => !isSupported(f.name));
-    const supported = inputFiles.filter((f) => isSupported(f.name));
-    if (unsupported.length > 0) alert(`Unsupported: ${unsupported.map((f) => f.name).join(", ")}`);
+    const tooBig = inputFiles.filter((f) => f.size > MAX_FILE_SIZE);
+    const unsupported = inputFiles.filter((f) => !isSupported(f.name) && !tooBig.includes(f));
+    const supported = inputFiles.filter((f) => isSupported(f.name) && f.size <= MAX_FILE_SIZE);
+
+    if (tooBig.length > 0) {
+      setDialog({
+        type: "error",
+        title: "Archivo demasiado grande",
+        message: `${tooBig.map((f) => f.name).join(", ")} supera el límite de 500 MB.`,
+      });
+    }
+    if (unsupported.length > 0) {
+      setDialog({
+        type: "warning",
+        title: "Formato no soportado",
+        message: `${unsupported.map((f) => f.name).join(", ")} no es un formato válido. Usa CSV, JSON, TSV, Parquet, GeoJSON o TopoJSON.`,
+      });
+    }
     if (supported.length === 0) return;
+
     setUploading(true);
     try {
-      const failed = (await Promise.allSettled(supported.map((f) => uploadFile(f)))).filter((r) => r.status === "rejected");
-      if (failed.length > 0) alert(`Failed to load ${failed.length} file(s).`);
+      const results = await Promise.allSettled(supported.map((f) => uploadFile(f)));
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        setDialog({
+          type: "error",
+          title: "Error al cargar",
+          message: `No se pudieron cargar ${failed.length} archivo(s). Verifica que el formato sea correcto.`,
+        });
+      }
     } finally {
       setUploading(false);
     }
@@ -217,11 +245,18 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
                     +
                   </button>
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.stopPropagation();
-                      if (!confirm(`Delete "${table.name}"?`)) return;
-                      setDeleting(table.name);
-                      try { await deleteFile(table.name); } finally { setDeleting(null); }
+                      setPendingDelete(table.name);
+                      setDialog({
+                        type: "confirm",
+                        title: "Eliminar tabla",
+                        message: `¿Eliminar "${table.name}"? Esta acción no se puede deshacer.`,
+                        onConfirm: async () => {
+                          setDeleting(table.name);
+                          try { await deleteFile(table.name); } finally { setDeleting(null); setPendingDelete(null); }
+                        },
+                      });
                     }}
                     title="Delete table"
                     disabled={deleting === table.name}
@@ -341,6 +376,17 @@ export default function DataPanel({ onAddFromNode, onCreateMapFlow }: Props) {
           </div>
         )}
       </div>
+      {dialog && (
+        <Dialog
+          open={true}
+          title={dialog.title}
+          message={dialog.message}
+          type={dialog.type}
+          confirmLabel={dialog.type === "confirm" ? "Eliminar" : "Aceptar"}
+          onConfirm={dialog.onConfirm}
+          onClose={() => { setDialog(null); setPendingDelete(null); }}
+        />
+      )}
     </div>
   );
 }

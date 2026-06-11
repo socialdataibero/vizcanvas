@@ -1,5 +1,6 @@
 import { DataTable } from "@/types/data";
 import { ColumnInfo } from "@/types/nodes";
+import { getToken } from "@/stores/authStore";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
@@ -19,8 +20,10 @@ export async function loadDataFile(file: File): Promise<DataTable> {
   const body = new FormData();
   body.append("file", file);
 
+  const token = getToken();
   const res = await fetch(`${API_BASE}/files/upload`, {
     method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body,
   });
 

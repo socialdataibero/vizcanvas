@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useAuthStore } from "@/stores/authStore";
+import LoginPage from "@/components/auth/LoginPage";
 
 const CanvasApp = dynamic(() => import("@/components/canvas/CanvasApp"), {
   ssr: false,
@@ -15,5 +17,7 @@ const CanvasApp = dynamic(() => import("@/components/canvas/CanvasApp"), {
 });
 
 export default function Home() {
+  const token = useAuthStore((s) => s.token);
+  if (!token) return <LoginPage />;
   return <CanvasApp />;
 }

@@ -6,15 +6,24 @@
  */
 import { ColumnInfo, QueryResult } from "@/types/nodes";
 
+import { getToken } from "@/stores/authStore";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = getToken();
+  return token
+    ? { Authorization: `Bearer ${token}`, ...extra }
+    : { ...extra };
+}
+
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -27,7 +36,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
@@ -38,7 +47,10 @@ async function apiGet<T>(path: string): Promise<T> {
 }
 
 async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
   if (!res.ok && res.status !== 204) {
     throw new Error(`Error ${res.status}: DELETE ${path}`);
   }

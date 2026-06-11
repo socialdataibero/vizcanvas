@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useUIStore } from "@/stores/uiStore";
 import { CANVAS_VIEWPORT_CHANGE_EVENT } from "@/lib/canvasViewportEvents";
+import Dialog from "@/components/ui/Dialog";
 
 interface TitleCardProps {
   onSaveSnapshot?: () => void;
@@ -27,6 +28,7 @@ export default function TitleCard({
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<"export" | "import" | null>(null);
+  const [errorDialog, setErrorDialog] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -107,8 +109,8 @@ export default function TitleCard({
       await callback();
       setMenuOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo completar la accion.";
-      window.alert(message);
+      const message = error instanceof Error ? error.message : "No se pudo completar la acción.";
+      setErrorDialog(message);
     } finally {
       setBusyAction(null);
     }
@@ -246,6 +248,13 @@ export default function TitleCard({
         </div>,
         document.body
       )}
+      <Dialog
+        open={!!errorDialog}
+        type="error"
+        title="Error"
+        message={errorDialog ?? ""}
+        onClose={() => setErrorDialog(null)}
+      />
     </div>
   );
 }

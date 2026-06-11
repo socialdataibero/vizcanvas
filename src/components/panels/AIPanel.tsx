@@ -6,6 +6,7 @@ import { useCanvasStore } from "@/stores/canvasStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useDataStore } from "@/stores/dataStore";
 import { useDagStore } from "@/stores/dagStore";
+import { getToken } from "@/stores/authStore";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -80,7 +81,7 @@ export default function AIPanel({ onApplyPlan }: Props) {
         try {
           res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}/ai/chat`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
             cache: "no-store",
             body: payload,
           });

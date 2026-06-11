@@ -14,6 +14,7 @@ import TitleCard from "@/components/panels/TitleCard";
 import AIPanel from "@/components/panels/AIPanel";
 import PageTabs from "@/components/panels/PageTabs";
 import ShortcutsModal from "@/components/ui/ShortcutsModal";
+import Dialog from "@/components/ui/Dialog";
 import { NodeType, FromConfig } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
 import { buildDeletedPageState, buildDuplicatedPageState } from "@/lib/canvasPages";
@@ -73,6 +74,7 @@ export default function CanvasApp() {
   const [nodeSizes, setNodeSizes] = useState<Record<string, { width: number; height: number }>>({});
   const [frames, setFrames] = useState<CanvasFrame[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [dialog, setDialog] = useState<{ title: string; message: string; type?: "info" | "error" | "warning" } | null>(null);
   const sampleDataRestoreAttemptedRef = useRef(false);
   const framesRef = useRef<CanvasFrame[]>([]);
 
@@ -194,13 +196,13 @@ export default function CanvasApp() {
   const handleRestoreSnapshot = useCallback(async (snapshotId: string) => {
     const snapshot = canvasStoreApi.getState().snapshots.find((entry) => entry.id === snapshotId);
     if (!snapshot) {
-      window.alert("No se encontro el snapshot seleccionado.");
+      setDialog({ type: "error", title: "Snapshot no encontrado", message: "No se encontró el snapshot seleccionado." });
       return;
     }
 
     const parsedState = parsePersistedAppState(snapshot.data);
     if (!parsedState) {
-      window.alert("El snapshot guardado no tiene un formato valido.");
+      setDialog({ type: "error", title: "Formato inválido", message: "El snapshot guardado no tiene un formato válido." });
       return;
     }
 
@@ -438,6 +440,7 @@ export default function CanvasApp() {
     tables,
     setNodePositions,
     setSelectedNode,
+    onError: (title, message) => setDialog({ type: "error", title, message }),
   });
 
   const handleNodeMove = useCallback((nodeId: string, x: number, y: number) => {
@@ -774,6 +777,15 @@ export default function CanvasApp() {
 
       {/* Shortcuts Modal */}
       {shortcutsModalOpen && <ShortcutsModal onClose={toggleShortcutsModal} />}
+      {dialog && (
+        <Dialog
+          open={true}
+          title={dialog.title}
+          message={dialog.message}
+          type={dialog.type}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }

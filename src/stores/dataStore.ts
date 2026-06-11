@@ -4,9 +4,15 @@ import { SuggestedMapFlow } from "@/lib/columnSemantics";
 import { dropTable, clearAllTables, exportTableData, importTableData } from "@/db/duckdb";
 import { loadDataFile } from "@/db/fileLoader";
 import { getColumnStats } from "@/db/queries";
+import { getToken } from "@/stores/authStore";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 interface DataState {
   tables: DataTable[];
@@ -48,7 +54,7 @@ const dataStore = createStore<DataState>((set, get) => ({
     const endpoint = table?.filename
       ? `${API_BASE}/files/${encodeURIComponent(table.filename)}`
       : `${API_BASE}/tables/${encodeURIComponent(tableName)}`;
-    const res = await fetch(endpoint, { method: "DELETE" });
+    const res = await fetch(endpoint, { method: "DELETE", headers: authHeaders() });
     if (!res.ok && res.status !== 404) throw new Error(`Error ${res.status}`);
     set((state) => ({ tables: state.tables.filter((t) => t.name !== tableName) }));
   },
@@ -72,7 +78,7 @@ const dataStore = createStore<DataState>((set, get) => ({
 
   refreshTables: async () => {
     try {
-      const res = await fetch(`${API_BASE}/tables`);
+      const res = await fetch(`${API_BASE}/tables`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const tables: DataTable[] = await res.json();
       set({ tables });
@@ -83,7 +89,7 @@ const dataStore = createStore<DataState>((set, get) => ({
 
   refreshMapFlows: async () => {
     try {
-      const res = await fetch(`${API_BASE}/analysis/map-flows`);
+      const res = await fetch(`${API_BASE}/analysis/map-flows`, { headers: authHeaders() });
       if (!res.ok) return;
       const flows: SuggestedMapFlow[] = await res.json();
 
