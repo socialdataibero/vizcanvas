@@ -3,12 +3,14 @@ import {
   buildPersistedAppState,
   buildSafeVizCanvasTitle,
   buildVizCanvasFile,
+  mergePersistedStates,
   parsePersistedAppState,
   parseVizCanvasFile,
   readPersistedUploadedTables,
   writePersistedUploadedTables,
 } from "@/lib/persistence";
 import type { PersistedAppState, VizCanvasExportedTable } from "@/lib/persistence";
+import type { DAGNode } from "@/engine/types";
 
 function createPersistedState(): PersistedAppState {
   return {
@@ -247,6 +249,107 @@ describe("vizcanvas file helpers", () => {
         tables: [{ name: "orders", rowCount: 1 }],
       },
     });
+  });
+});
+
+function makeMergeState(
+  pageId: string,
+  nodes: Array<{ id: string; type: DAGNode["type"]; config: unknown }>,
+  currentPageId = pageId
+): PersistedAppState {
+  return buildPersistedAppState({
+    nodePositions: Object.fromEntries(nodes.map((n, i) => [n.id, { x: i * 100, y: 0 }])),
+    nodeSizes: {},
+    frames: [],
+    canvas: {
+      id: `canvas-${pageId}`,
+      title: "Test",
+      pages: [{ id: pageId, name: "Page", order: 0 }],
+      currentPageId,
+      focusMode: false,
+    },
+    dag: {
+      nodes: Object.fromEntries(
+        nodes.map((n) => [
+          n.id,
+          {
+            id: n.id,
+            type: n.type,
+            config: n.config,
+            inputIds: [],
+            result: null,
+            status: "idle",
+            pageId,
+          } as DAGNode,
+        ])
+      ),
+      edges: [],
+    },
+  });
+}
+
+describe("mergePersistedStates", () => {
+  it("appends new pages and focuses the incoming page", () => {
+    const base = makeMergeState("p1", [
+      { id: "a", type: "from", config: { tableName: "ventas" } },
+    ]);
+    const incoming = makeMergeState("p2", [
+      { id: "b", type: "from", config: { tableName: "gastos" } },
+    ]);
+
+    const merged = mergePersistedStates(base, incoming);
+
+    expect(merged.canvas.pages.map((p) => p.id)).toEqual(["p1", "p2"]);
+    expect(merged.canvas.currentPageId).toBe("p2");
+    expect(Object.keys(merged.dag.nodes).sort()).toEqual(["a", "b"]);
+  });
+
+  it("skips incoming pages whose pipeline already exists (same types + configs)", () => {
+    const base = makeMergeState("p1", [
+      { id: "a", type: "from", config: { tableName: "ventas" } },
+      { id: "a2", type: "table", config: {} },
+    ]);
+    // Same pipeline, different uuids/page
+    const incoming = makeMergeState("p9", [
+      { id: "z", type: "from", config: { tableName: "ventas" } },
+      { id: "z2", type: "table", config: {} },
+    ]);
+
+    const merged = mergePersistedStates(base, incoming);
+
+    expect(merged.canvas.pages.map((p) => p.id)).toEqual(["p1"]);
+    // Focuses the existing equivalent page instead of duplicating
+    expect(merged.canvas.currentPageId).toBe("p1");
+    expect(Object.keys(merged.dag.nodes).sort()).toEqual(["a", "a2"]);
+    expect(Object.keys(merged.nodePositions).sort()).toEqual(["a", "a2"]);
+  });
+
+  it("merging the same incoming state twice is idempotent", () => {
+    const base = makeMergeState("p1", [
+      { id: "a", type: "from", config: { tableName: "ventas" } },
+    ]);
+    const incoming = makeMergeState("p2", [
+      { id: "b", type: "group", config: { groupByColumns: ["region"] } },
+    ]);
+
+    const once = mergePersistedStates(base, incoming);
+    const twice = mergePersistedStates(once, incoming);
+
+    expect(twice.canvas.pages.length).toBe(once.canvas.pages.length);
+    expect(Object.keys(twice.dag.nodes).length).toBe(Object.keys(once.dag.nodes).length);
+  });
+
+  it("keeps base currentPageId when everything incoming is a duplicate", () => {
+    const base = makeMergeState("p1", [
+      { id: "a", type: "sql", config: { query: "SELECT 1" } },
+    ]);
+    const incoming = makeMergeState("p2", [
+      { id: "b", type: "sql", config: { query: "SELECT 1" } },
+    ]);
+
+    const merged = mergePersistedStates(base, incoming);
+    expect(merged.canvas.currentPageId).toBe("p1");
+    expect(merged.dag.edges).toEqual([]);
   });
 });
 

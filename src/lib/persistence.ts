@@ -94,7 +94,6 @@ function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
     ? (parsed as { version: number }).version
     : 0;
 
-  // Version 0 or missing: try to use as-is if it has the expected shape
   if (version === 0 || version === undefined) {
     if ((parsed as Partial<PersistedAppState>).canvas && (parsed as Partial<PersistedAppState>).dag && (parsed as Partial<PersistedAppState>).nodePositions) {
       const state = parsed as PersistedAppState;
@@ -108,7 +107,6 @@ function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
     return null;
   }
 
-  // Current version
   if (version === STORAGE_VERSION) {
     const state = parsed as PersistedAppState;
     return {
@@ -118,7 +116,6 @@ function normalizePersistedAppState(parsed: unknown): PersistedAppState | null {
     };
   }
 
-  // Future versions: attempt to load rather than discarding
   console.warn(`[Persistence] Unknown version ${version}, attempting to load`);
   const state = parsed as PersistedAppState;
   return {
@@ -225,6 +222,79 @@ export function buildPersistedAppState(input: Omit<PersistedAppState, "version" 
 
 export function clonePersistedAppState(state: PersistedAppState): PersistedAppState {
   return JSON.parse(JSON.stringify(state)) as PersistedAppState;
+}
+function pageSignature(state: PersistedAppState, pageId: string): string {
+  return Object.values(state.dag.nodes)
+    .filter((node) => node.pageId === pageId)
+    .map((node) => `${node.type}:${JSON.stringify(node.config ?? {})}`)
+    .sort()
+    .join("|");
+}
+export function mergePersistedStates(
+  base: PersistedAppState,
+  incoming: PersistedAppState
+): PersistedAppState {
+  const baseSignatures = new Map<string, string>(
+    base.canvas.pages.map((page) => [pageSignature(base, page.id), page.id])
+  );
+
+  const keptPages: CanvasPage[] = [];
+  let focusPageId: string | null = null;
+
+  for (const page of incoming.canvas.pages) {
+    const sig = pageSignature(incoming, page.id);
+    const existingPageId = sig ? baseSignatures.get(sig) : undefined;
+    if (existingPageId) {
+      if (page.id === incoming.canvas.currentPageId || focusPageId === null) {
+        focusPageId = existingPageId;
+      }
+    } else {
+      keptPages.push(page);
+      if (page.id === incoming.canvas.currentPageId) {
+        focusPageId = page.id;
+      }
+    }
+  }
+
+  const keptPageIds = new Set(keptPages.map((p) => p.id));
+  const keptNodes = Object.fromEntries(
+    Object.entries(incoming.dag.nodes).filter(([, node]) => keptPageIds.has(node.pageId))
+  );
+  const keptNodeIds = new Set(Object.keys(keptNodes));
+  const keptEdges = incoming.dag.edges.filter(
+    (e) => keptNodeIds.has(e.fromNodeId) && keptNodeIds.has(e.toNodeId)
+  );
+  const keptPositions = Object.fromEntries(
+    Object.entries(incoming.nodePositions).filter(([id]) => keptNodeIds.has(id))
+  );
+  const keptSizes = Object.fromEntries(
+    Object.entries(incoming.nodeSizes ?? {}).filter(([id]) => keptNodeIds.has(id))
+  );
+  const keptFrames = normalizeFrames(incoming.frames).filter((f) => keptPageIds.has(f.pageId));
+
+  const baseOrderMax = base.canvas.pages.reduce((max, p) => Math.max(max, p.order), -1);
+  const incomingPages = keptPages.map((page, i) => ({
+    ...page,
+    order: baseOrderMax + 1 + i,
+  }));
+
+  return {
+    version: STORAGE_VERSION,
+    savedAt: new Date().toISOString(),
+    nodePositions: { ...base.nodePositions, ...keptPositions },
+    nodeSizes: { ...(base.nodeSizes ?? {}), ...keptSizes },
+    frames: [...normalizeFrames(base.frames), ...keptFrames],
+    canvas: {
+      ...base.canvas,
+      pages: [...base.canvas.pages, ...incomingPages],
+      currentPageId: focusPageId ?? base.canvas.currentPageId,
+      focusMode: false,
+    },
+    dag: {
+      nodes: { ...base.dag.nodes, ...keptNodes },
+      edges: [...base.dag.edges, ...keptEdges],
+    },
+  };
 }
 
 export function buildSafeVizCanvasTitle(title: string): string {

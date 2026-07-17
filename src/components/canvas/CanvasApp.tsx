@@ -14,6 +14,7 @@ import TitleCard from "@/components/panels/TitleCard";
 import AIPanel from "@/components/panels/AIPanel";
 import PageTabs from "@/components/panels/PageTabs";
 import ShortcutsModal from "@/components/ui/ShortcutsModal";
+import UserMenu from "@/components/auth/UserMenu";
 import Dialog from "@/components/ui/Dialog";
 import { NodeType, FromConfig } from "@/types/nodes";
 import { CanvasFrame } from "@/types/canvas";
@@ -37,9 +38,11 @@ import {
 import { getDefaultNodeConfig } from "@/lib/nodeConfig";
 import {
   buildPersistedAppState,
+  mergePersistedStates,
   parsePersistedAppState,
   PersistedAppState,
 } from "@/lib/persistence";
+import { fetchRemoteCanvasState, saveRemoteCanvasState } from "@/db/canvasState";
 import { clearHydratedNodeExecution, hasReferencedSampleData } from "@/lib/canvasAIHelpers";
 import { useCanvasHistory } from "@/hooks/useCanvasHistory";
 import { useCanvasPresentation } from "@/hooks/useCanvasPresentation";
@@ -69,7 +72,6 @@ export default function CanvasApp() {
   const nodes = useDagStore((s) => s.nodes);
   const edges = useDagStore((s) => s.edges);
 
-  // Node positions stored locally for the canvas
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [nodeSizes, setNodeSizes] = useState<Record<string, { width: number; height: number }>>({});
   const [frames, setFrames] = useState<CanvasFrame[]>([]);
@@ -77,6 +79,7 @@ export default function CanvasApp() {
   const [dialog, setDialog] = useState<{ title: string; message: string; type?: "info" | "error" | "warning" } | null>(null);
   const sampleDataRestoreAttemptedRef = useRef(false);
   const framesRef = useRef<CanvasFrame[]>([]);
+  const handoffRawRef = useRef<string | null>(null);
 
   useEffect(() => {
     framesRef.current = frames;
@@ -138,9 +141,39 @@ export default function CanvasApp() {
     },
   }), [canvasId, currentPageId, edges, focusMode, frames, nodePositions, nodeSizes, nodes, pages, title]);
 
+  const buildRemoteSaveState = useCallback(() => buildPersistedAppState({
+    nodePositions,
+    nodeSizes,
+    frames,
+    canvas: {
+      id: canvasId,
+      title,
+      pages,
+      currentPageId,
+      focusMode,
+    },
+    dag: {
+      nodes: clearHydratedNodeExecution(nodes),
+      edges,
+    },
+  }), [canvasId, currentPageId, edges, focusMode, frames, nodePositions, nodeSizes, nodes, pages, title]);
+
   const persistCanvasStateNow = useCallback(() => {
-    // no-op until auth-backed persistence is implemented
-  }, []);
+    if (!hydrated) return;
+    void saveRemoteCanvasState(buildRemoteSaveState()).catch((err) => {
+      console.warn("[persist] No se pudo guardar el canvas:", err);
+    });
+  }, [hydrated, buildRemoteSaveState]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const timeout = setTimeout(() => {
+      void saveRemoteCanvasState(buildRemoteSaveState()).catch((err) => {
+        console.warn("[persist] Autosave del canvas falló:", err);
+      });
+    }, 1500);
+    return () => clearTimeout(timeout);
+  }, [hydrated, buildRemoteSaveState]);
 
   const handleSaveSnapshot = useCallback(() => {
     const snapshotData = JSON.stringify(buildCurrentPersistedState());
@@ -427,7 +460,6 @@ export default function CanvasApp() {
         })
       : { x: 200 + Math.random() * 400, y: 200 + Math.random() * 300 };
     setNodePositions((prev) => ({ ...prev, [nodeId]: pos }));
-    // Execute immediately
     setTimeout(() => dagStoreApi.getState().executeNode(nodeId), 100);
   }, [addNode, currentPageId, nodes]);
 
@@ -607,10 +639,48 @@ export default function CanvasApp() {
 
   useEffect(() => {
     if (hydrated) return;
-    // Persistence disabled until auth — clear any stale localStorage data and start fresh.
+    const stored = sessionStorage.getItem("vizcanvas-handoff");
+    if (stored) handoffRawRef.current = stored;
+    sessionStorage.removeItem("vizcanvas-handoff");
+    const handoffRaw = handoffRawRef.current;
+    const authRaw = localStorage.getItem("vizcanvas-auth");
     localStorage.clear();
-    setHydrated(true);
-  }, [hydrated]);
+    if (authRaw) localStorage.setItem("vizcanvas-auth", authRaw);
+
+    let cancelled = false;
+    void (async () => {
+      const remote = await fetchRemoteCanvasState().catch(() => null);
+      if (cancelled) return;
+      const blankPageId = uuidv4();
+      const blankState = buildPersistedAppState({
+        nodePositions: {},
+        nodeSizes: {},
+        frames: [],
+        canvas: {
+          id: uuidv4(),
+          title: "Untitled Canvas",
+          pages: [{ id: blankPageId, name: "Page 1", order: 0 }],
+          currentPageId: blankPageId,
+          focusMode: false,
+        },
+        dag: { nodes: {}, edges: [] },
+      });
+
+      const handoffState = handoffRaw ? parsePersistedAppState(handoffRaw) : null;
+      canvasStoreApi.setState({ snapshots: [] });
+      if (handoffState && remote) {
+        applyPersistedState(mergePersistedStates(remote, handoffState));
+      } else if (handoffState) {
+        applyPersistedState(handoffState);
+      } else {
+        applyPersistedState(remote ?? blankState);
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, applyPersistedState]);
 
   useEffect(() => {
     if (!hydrated || !ready) return;
@@ -642,7 +712,6 @@ export default function CanvasApp() {
     void dagStoreApi.getState().executeAll();
   }, [hydrated, ready, tables]);
 
-  // Keyboard shortcuts
   if (loading && !ready) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
@@ -723,14 +792,17 @@ export default function CanvasApp() {
             )}
           </div>
 
-          {/* Top Right - Style Panel */}
-          {stylePanelOpen && (
-            <div className="pointer-events-none absolute right-0 top-0 z-20 p-3">
+          {/* Top Right - User Menu + Style Panel */}
+          <div className="pointer-events-none absolute right-0 top-0 z-20 flex flex-col items-end gap-2 p-3">
+            <div className="pointer-events-auto">
+              <UserMenu />
+            </div>
+            {stylePanelOpen && (
               <div className="pointer-events-auto">
                 <StylePanel />
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Bottom Center - Toolbar */}
           <div className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 pb-4">
