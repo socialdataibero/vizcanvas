@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { LuDownload, LuFolderArchive, LuKeyboard } from "react-icons/lu";
+import { LuDownload, LuFolderArchive, LuKeyboard, LuShare2 } from "react-icons/lu";
 import { createPortal } from "react-dom";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useUIStore } from "@/stores/uiStore";
@@ -13,6 +13,7 @@ interface TitleCardProps {
   onRestoreSnapshot?: (snapshotId: string) => void;
   onExportVizCanvas?: () => Promise<void> | void;
   onImportVizCanvas?: (file: File) => Promise<void> | void;
+  onSharePage?: () => Promise<void> | void;
 }
 
 export default function TitleCard({
@@ -20,6 +21,7 @@ export default function TitleCard({
   onRestoreSnapshot,
   onExportVizCanvas,
   onImportVizCanvas,
+  onSharePage,
 }: TitleCardProps) {
   const title = useCanvasStore((s) => s.title);
   const setTitle = useCanvasStore((s) => s.setTitle);
@@ -27,7 +29,7 @@ export default function TitleCard({
   const toggleShortcutsModal = useUIStore((s) => s.toggleShortcutsModal);
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [busyAction, setBusyAction] = useState<"export" | "import" | null>(null);
+  const [busyAction, setBusyAction] = useState<"export" | "import" | "share" | null>(null);
   const [errorDialog, setErrorDialog] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -103,7 +105,7 @@ export default function TitleCard({
     };
   }, [menuOpen]);
 
-  const runMenuAction = async (action: "export" | "import", callback: () => Promise<void> | void) => {
+  const runMenuAction = async (action: "export" | "import" | "share", callback: () => Promise<void> | void) => {
     try {
       setBusyAction(action);
       await callback();
@@ -212,6 +214,22 @@ export default function TitleCard({
               </div>
               <hr className="my-1 border-gray-200" />
             </>
+          )}
+          {onSharePage && (
+            <button
+              className="context-menu-item"
+              disabled={busyAction === "share"}
+              onClick={() => {
+                void runMenuAction("share", async () => {
+                  await onSharePage();
+                });
+              }}
+            >
+              <span className="inline-flex items-center gap-2">
+                <LuShare2 className="h-4 w-4" />
+                <span>{busyAction === "share" ? "Creando enlace..." : "Compartir página (solo lectura)"}</span>
+              </span>
+            </button>
           )}
           <button
             className="context-menu-item"

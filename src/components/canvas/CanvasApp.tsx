@@ -43,6 +43,7 @@ import {
   PersistedAppState,
 } from "@/lib/persistence";
 import { fetchRemoteCanvasState, saveRemoteCanvasState } from "@/db/canvasState";
+import { createShare } from "@/db/shares";
 import { clearHydratedNodeExecution, hasReferencedSampleData } from "@/lib/canvasAIHelpers";
 import { useCanvasHistory } from "@/hooks/useCanvasHistory";
 import { useCanvasPresentation } from "@/hooks/useCanvasPresentation";
@@ -51,8 +52,9 @@ import { useMapFlowCreation } from "@/hooks/useMapFlowCreation";
 import { useAIPlanOrchestration } from "@/hooks/useAIPlanOrchestration";
 import { v4 as uuidv4 } from "uuid";
 
-export default function CanvasApp() {
-  const { ready, loading, error } = useDuckDB();
+export default function CanvasApp({ guestSnapshot = null }: { guestSnapshot?: PersistedAppState | null } = {}) {
+  const isGuest = Boolean(guestSnapshot);
+  const { ready, loading, error } = useDuckDB({ skip: isGuest });
   const canvasId = useCanvasStore((s) => s.id);
   const title = useCanvasStore((s) => s.title);
   const pages = useCanvasStore((s) => s.pages);
@@ -159,21 +161,21 @@ export default function CanvasApp() {
   }), [canvasId, currentPageId, edges, focusMode, frames, nodePositions, nodeSizes, nodes, pages, title]);
 
   const persistCanvasStateNow = useCallback(() => {
-    if (!hydrated) return;
+    if (!hydrated || isGuest) return;
     void saveRemoteCanvasState(buildRemoteSaveState()).catch((err) => {
       console.warn("[persist] No se pudo guardar el canvas:", err);
     });
-  }, [hydrated, buildRemoteSaveState]);
+  }, [hydrated, isGuest, buildRemoteSaveState]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || isGuest) return;
     const timeout = setTimeout(() => {
       void saveRemoteCanvasState(buildRemoteSaveState()).catch((err) => {
         console.warn("[persist] Autosave del canvas falló:", err);
       });
     }, 1500);
     return () => clearTimeout(timeout);
-  }, [hydrated, buildRemoteSaveState]);
+  }, [hydrated, isGuest, buildRemoteSaveState]);
 
   const handleSaveSnapshot = useCallback(() => {
     const snapshotData = JSON.stringify(buildCurrentPersistedState());
@@ -225,6 +227,84 @@ export default function CanvasApp() {
     });
     setSelectedNode(null);
   }, [setSelectedNode]);
+  const applyGuestState = useCallback((state: PersistedAppState) => {
+    setNodePositions(state.nodePositions);
+    setNodeSizes(state.nodeSizes ?? {});
+    const restoredNodes = state.dag.nodes;
+    const restoredFrames = normalizeFrameMembership(
+      state.frames ?? [],
+      restoredNodes,
+      state.nodePositions,
+      state.nodeSizes ?? {}
+    );
+    setFrames(restoredFrames);
+    canvasStoreApi.setState({
+      id: state.canvas.id,
+      title: state.canvas.title,
+      pages: state.canvas.pages,
+      currentPageId: state.canvas.currentPageId,
+      focusMode: false,
+    });
+    dagStoreApi.setState({
+      nodes: restoredNodes,
+      edges: state.dag.edges,
+    });
+    setSelectedNode(null);
+  }, [setSelectedNode]);
+
+  const handleSharePage = useCallback(async () => {
+    const liveNodes = dagStoreApi.getState().nodes;
+    const pageNodeEntries = Object.entries(liveNodes).filter(
+      ([, node]) => node.pageId === currentPageId
+    );
+    if (pageNodeEntries.length === 0) {
+      setDialog({ type: "warning", title: "Nada que compartir", message: "Esta página no tiene nodos todavía." });
+      return;
+    }
+    const pageNodeIds = new Set(pageNodeEntries.map(([id]) => id));
+    const pageNodes = Object.fromEntries(pageNodeEntries);
+    const pageEdges = edges.filter(
+      (e) => pageNodeIds.has(e.fromNodeId) && pageNodeIds.has(e.toNodeId)
+    );
+    const pagePositions = Object.fromEntries(
+      Object.entries(nodePositions).filter(([id]) => pageNodeIds.has(id))
+    );
+    const pageSizes = Object.fromEntries(
+      Object.entries(nodeSizes).filter(([id]) => pageNodeIds.has(id))
+    );
+    const pageFrames = frames.filter((f) => f.pageId === currentPageId);
+    const currentPage = pages.find((p) => p.id === currentPageId);
+
+    const snapshot = buildPersistedAppState({
+      nodePositions: pagePositions,
+      nodeSizes: pageSizes,
+      frames: pageFrames,
+      canvas: {
+        id: canvasId,
+        title,
+        pages: currentPage ? [{ ...currentPage, order: 0 }] : pages,
+        currentPageId,
+        focusMode: false,
+      },
+      dag: { nodes: pageNodes, edges: pageEdges },
+    });
+
+    try {
+      const { url } = await createShare(snapshot);
+      await navigator.clipboard?.writeText(url).catch(() => {});
+      setDialog({
+        type: "info",
+        title: "Enlace de solo lectura creado",
+        message: `Copiado al portapapeles. Válido para un invitado único (24 h):\n\n${url}`,
+      });
+    } catch (err) {
+      setDialog({
+        type: "error",
+        title: "No se pudo compartir",
+        message: err instanceof Error ? err.message : "Error al crear el enlace",
+      });
+    }
+  }, [canvasId, currentPageId, edges, frames, nodePositions, nodeSizes, pages, title]);
 
   const handleRestoreSnapshot = useCallback(async (snapshotId: string) => {
     const snapshot = canvasStoreApi.getState().snapshots.find((entry) => entry.id === snapshotId);
@@ -253,7 +333,7 @@ export default function CanvasApp() {
   });
 
   const {
-    presentationMode,
+    presentationMode: derivedPresentationMode,
     presentationFrameId,
     sharedNodeIds,
     presentationTitle,
@@ -266,6 +346,8 @@ export default function CanvasApp() {
     nodes,
     setCurrentPage: (pageId) => canvasStoreApi.getState().setCurrentPage(pageId),
   });
+
+  const presentationMode = derivedPresentationMode || isGuest;
 
   const handleAddNode = useCallback((type: NodeType, position?: { x: number; y: number }) => {
     const config = getDefaultNodeConfig(type);
@@ -639,6 +721,12 @@ export default function CanvasApp() {
 
   useEffect(() => {
     if (hydrated) return;
+    if (guestSnapshot) {
+      applyGuestState(guestSnapshot);
+      setHydrated(true);
+      return;
+    }
+
     const stored = sessionStorage.getItem("vizcanvas-handoff");
     if (stored) handoffRawRef.current = stored;
     sessionStorage.removeItem("vizcanvas-handoff");
@@ -680,10 +768,10 @@ export default function CanvasApp() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, applyPersistedState]);
+  }, [hydrated, applyPersistedState, guestSnapshot, applyGuestState]);
 
   useEffect(() => {
-    if (!hydrated || !ready) return;
+    if (!hydrated || !ready || isGuest) return;
     if (sampleDataRestoreAttemptedRef.current) return;
 
     const currentNodes = dagStoreApi.getState().nodes;
@@ -708,11 +796,11 @@ export default function CanvasApp() {
   }, [hydrated, ready, tables, uploadFile]);
 
   useEffect(() => {
-    if (!hydrated || !ready) return;
+    if (!hydrated || !ready || isGuest) return;
     void dagStoreApi.getState().executeAll();
-  }, [hydrated, ready, tables]);
+  }, [hydrated, ready, isGuest, tables]);
 
-  if (loading && !ready) {
+  if (loading && !ready && !isGuest) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -742,7 +830,6 @@ export default function CanvasApp() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Canvas */}
       <InfiniteCanvas
         nodePositions={nodePositions}
         nodeSizes={nodeSizes}
@@ -772,10 +859,8 @@ export default function CanvasApp() {
         </div>
       )}
 
-      {/* Overlay UI - hidden in focus mode */}
       {!(focusMode || presentationMode) && (
         <>
-          {/* Top Left - Title + Data Panel */}
           <div className="pointer-events-none absolute left-0 top-0 z-20 flex flex-col gap-2 p-3">
             <div className="pointer-events-auto">
               <TitleCard
@@ -783,6 +868,7 @@ export default function CanvasApp() {
                 onRestoreSnapshot={(snapshotId) => { void handleRestoreSnapshot(snapshotId); }}
                 onExportVizCanvas={handleExportVizCanvas}
                 onImportVizCanvas={handleImportVizCanvas}
+                onSharePage={handleSharePage}
               />
             </div>
             {dataPanelOpen && (

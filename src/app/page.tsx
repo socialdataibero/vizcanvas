@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore, isTokenUsable, type AuthUser } from "@/stores/authStore";
+import { fetchSharedView } from "@/db/shares";
+import type { PersistedAppState } from "@/lib/persistence";
 import LoginPage from "@/components/auth/LoginPage";
 import { v4 as uuidv4 } from "uuid";
 import { buildPersistedAppState } from "@/lib/persistence";
@@ -172,6 +174,29 @@ export default function Home() {
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const handoffProcessedRef = useRef(false);
 
+  const [shareStatus, setShareStatus] = useState<"none" | "loading" | "error">("none");
+  const [guestSnapshot, setGuestSnapshot] = useState<PersistedAppState | null>(null);
+  const shareProcessedRef = useRef(false);
+
+  useEffect(() => {
+    const shareToken = new URLSearchParams(window.location.search).get("share");
+    if (!shareToken) return;
+    if (shareProcessedRef.current) return;
+    shareProcessedRef.current = true;
+
+    setShareStatus("loading");
+    fetchSharedView(shareToken)
+      .then((snapshot) => {
+        if (!snapshot) {
+          setShareStatus("error");
+          return;
+        }
+        setGuestSnapshot(snapshot);
+        setShareStatus("none");
+      })
+      .catch(() => setShareStatus("error"));
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const handoff = params.get("handoff");
@@ -288,6 +313,23 @@ export default function Home() {
         setStatus("idle");
       });
   }, [token, setSession]);
+
+  if (shareStatus === "loading") return <Spinner label="Cargando visualización compartida..." />;
+  if (shareStatus === "error") {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
+        <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+          <div className="text-4xl">🔗</div>
+          <p className="text-sm font-medium text-slate-700">Este enlace no es válido</p>
+          <p className="text-xs text-slate-500">
+            Puede que ya haya sido abierto por otro invitado o que haya expirado.
+            Pídele a quien te lo compartió que genere uno nuevo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (guestSnapshot) return <CanvasApp guestSnapshot={guestSnapshot} />;
 
   if (status === "auth") return <Spinner label="Autenticando con CKAN..." />;
   if (status === "import") return <Spinner label="Importando datos desde CKAN..." />;
