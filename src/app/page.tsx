@@ -8,13 +8,14 @@ import type { PersistedAppState } from "@/lib/persistence";
 import LoginPage from "@/components/auth/LoginPage";
 import { v4 as uuidv4 } from "uuid";
 import { buildPersistedAppState } from "@/lib/persistence";
-import type { FromConfig, GroupConfig, SQLConfig, TableDisplayConfig, ColumnFilter, AggregationConfig } from "@/types/nodes";
+import type { FromConfig, GroupConfig, SQLConfig, TableDisplayConfig, ColumnFilter, AggregationConfig, JoinConfig } from "@/types/nodes";
 import type { DAGNode, DAGEdge } from "@/engine/types";
 
 function buildAnalysisPipeline(
   recipe: Record<string, unknown>,
   sourceTableName: string,
-  _resultTableName: string
+  _resultTableName: string,
+  joinTableNamesByAlias: Record<string, string> = {}
 ) {
   const pageId = uuidv4();
   const nodes: Record<string, DAGNode> = {};
@@ -31,9 +32,9 @@ function buildAnalysisPipeline(
     nodePositions[node.id] = pos;
   }
 
-  function connect(fromId: string, toId: string) {
+  function connect(fromId: string, toId: string, toInputIndex = 0) {
     const edgeId = uuidv4();
-    edges.push({ id: edgeId, fromNodeId: fromId, toNodeId: toId, toInputIndex: 0 });
+    edges.push({ id: edgeId, fromNodeId: fromId, toNodeId: toId, toInputIndex });
     nodes[toId] = { ...nodes[toId], inputIds: [...nodes[toId].inputIds, fromId] };
   }
 
@@ -53,6 +54,35 @@ function buildAnalysisPipeline(
   }, { x, y });
   prevId = fromId;
   x += gap;
+  type RawJoin = { resourceId: string; alias: string; type: string; onLeft: string; onRight: string };
+  const joins = (recipe.joins as RawJoin[]) ?? [];
+
+  for (const j of joins) {
+    const joinTableName = joinTableNamesByAlias[j.alias] ?? j.alias;
+
+    const joinFromId = uuidv4();
+    addNode({
+      id: joinFromId, type: "from",
+      config: { tableName: joinTableName, filters: [] } as FromConfig,
+      inputIds: [], result: null, status: "idle", pageId,
+    }, { x, y: y + 220 });
+
+    const joinNodeId = uuidv4();
+    addNode({
+      id: joinNodeId, type: "join",
+      config: {
+        joinType: (j.type === "left" ? "LEFT" : "INNER") as JoinConfig["joinType"],
+        leftColumn: j.onLeft,
+        rightColumn: j.onRight,
+      } as JoinConfig,
+      inputIds: [], result: null, status: "idle", pageId,
+    }, { x, y });
+
+    connect(prevId!, joinNodeId, 0);
+    connect(joinFromId, joinNodeId, 1);
+    prevId = joinNodeId;
+    x += gap;
+  }
 
   type RawCompute = { left: string; right: string; as: string };
   const computes = (recipe.computes as RawCompute[]) ?? [];
@@ -235,6 +265,7 @@ export default function Home() {
         const sourceResourceUrl = params.get("source_resource_url");
         const sourceResourceName = params.get("source_resource_name");
         const pipelineB64 = params.get("pipeline");
+        const joinResourcesB64 = params.get("join_resources");
         console.log("[handoff] resource_url:", resourceUrl, "source:", sourceResourceUrl, "pipeline:", !!pipelineB64);
         window.history.replaceState({}, "", window.location.pathname);
 
@@ -266,6 +297,7 @@ export default function Home() {
             console.warn("[handoff] import result network error:", e);
           }
         }
+        let importedSourceTableName: string | null = null;
 
         if (sourceResourceUrl && sourceResourceName) {
           try {
@@ -284,10 +316,44 @@ export default function Home() {
             });
             if (srcRes.ok) {
               const srcData = await srcRes.json() as { tableName?: string; skipped?: boolean };
+              importedSourceTableName = srcData.tableName ?? null;
               console.log(srcData.skipped ? "[handoff] source already exists, not reimported:" : "[handoff] import source ok:", srcData);
             }
           } catch (e) {
             console.warn("[handoff] import source network error:", e);
+          }
+        }
+        const joinTableNamesByAlias: Record<string, string> = {};
+        if (joinResourcesB64) {
+          try {
+            const standardB64 = joinResourcesB64.replace(/-/g, "+").replace(/_/g, "/");
+            const joinResources = JSON.parse(atob(standardB64)) as { alias: string; url: string; name: string }[];
+            for (const jr of joinResources) {
+              try {
+                const jRes = await fetch(`${API_BASE}/tables/import-from-url`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${sessionToken}`,
+                  },
+                  body: JSON.stringify({
+                    url: jr.url,
+                    tableName: jr.name,
+                    format: "parquet",
+                    ckanToken: data.ckanDownloadToken ?? "",
+                  }),
+                });
+                if (jRes.ok) {
+                  const jData = await jRes.json() as { tableName?: string; skipped?: boolean };
+                  if (jData.tableName) joinTableNamesByAlias[jr.alias] = jData.tableName;
+                  console.log(jData.skipped ? "[handoff] join resource already exists:" : "[handoff] import join resource ok:", jr.alias, jData);
+                }
+              } catch (e) {
+                console.warn("[handoff] import join resource network error:", jr.alias, e);
+              }
+            }
+          } catch (e) {
+            console.warn("[handoff] could not parse join_resources:", e);
           }
         }
 
@@ -296,7 +362,7 @@ export default function Home() {
             const standardB64 = pipelineB64.replace(/-/g, "+").replace(/_/g, "/");
             const recipe = JSON.parse(atob(standardB64)) as Record<string, unknown>;
             console.log("[handoff] recipe keys:", Object.keys(recipe));
-            buildAnalysisPipeline(recipe, sourceResourceName, resourceName ?? "resultado");
+            buildAnalysisPipeline(recipe, importedSourceTableName ?? sourceResourceName, resourceName ?? "resultado", joinTableNamesByAlias);
           } catch (e) {
             console.warn("[handoff] could not build pipeline from recipe:", e);
           }
